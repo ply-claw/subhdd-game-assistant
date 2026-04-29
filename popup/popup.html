@@ -1,5 +1,35 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"><title>SubHDD Game Assistant</title></head>
-<body><script src="popup.js"></script></body>
+<head>
+  <meta charset="UTF-8">
+  <title>SubHDD Game Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="popup-header">
+      <span class="popup-title">🎮 Game Assistant</span>
+    </div>
+    <div class="popup-status" id="popup-status">
+      检查中...
+    </div>
+    <div class="popup-counts" id="popup-counts">
+    </div>
+    <div class="popup-actions">
+      <button class="popup-btn popup-btn-primary" id="btn-daily-run" disabled>
+        🚀 一键全通
+      </button>
+      <p class="popup-hint">预计耗时 3-8 分钟，请保持页面打开</p>
+    </div>
+    <div class="popup-settings">
+      <label class="popup-setting">
+        <span>2048 搜索深度:</span>
+        <input type="range" id="depth-slider" min="1" max="5" value="3" step="1">
+        <span id="depth-val">3</span>
+      </label>
+    </div>
+    <div class="popup-footer" id="popup-footer"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
 </html>

@@ -1,0 +1,83 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  width: 280px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 12px;
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.popup { padding: 14px; }
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.popup-title { font-weight: 700; font-size: 14px; color: #38bdf8; }
+
+.popup-status {
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  background: #334155;
+}
+
+.popup-counts {
+  margin-bottom: 10px;
+  font-size: 11px;
+  line-height: 1.8;
+}
+.popup-counts .count-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.popup-actions { margin-bottom: 12px; }
+
+.popup-btn {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.popup-btn-primary {
+  background: #dc2626;
+  color: #fff;
+}
+.popup-btn-primary:hover { background: #b91c1c; }
+.popup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.popup-hint {
+  color: #64748b;
+  font-size: 10px;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.popup-settings {
+  margin-bottom: 10px;
+}
+.popup-setting {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.popup-setting input { flex: 1; accent-color: #38bdf8; }
+
+.popup-footer {
+  font-size: 10px;
+  color: #64748b;
+  text-align: center;
+  border-top: 1px solid #334155;
+  padding-top: 8px;
+}
