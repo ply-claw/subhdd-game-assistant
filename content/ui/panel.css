@@ -1,0 +1,249 @@
+/* ---- Panel Root ---- */
+#ga-panel-root {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 99999;
+  height: 100vh;
+  display: flex;
+  flex-direction: row;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.ga-panel {
+  width: 280px;
+  background: #1e293b;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: -4px 0 24px rgba(0,0,0,0.4);
+  transition: transform 0.25s ease;
+  pointer-events: all;
+  height: 100%;
+}
+
+.ga-panel.ga-collapsed {
+  transform: translateX(280px);
+}
+
+/* ---- Header ---- */
+.ga-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid #334155;
+  flex-shrink: 0;
+}
+
+.ga-panel-title {
+  font-weight: 700;
+  font-size: 14px;
+  color: #38bdf8;
+}
+
+.ga-panel-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.ga-panel-close:hover { color: #e2e8f0; background: #334155; }
+
+/* ---- Body ---- */
+.ga-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.ga-panel-body::-webkit-scrollbar { width: 4px; }
+.ga-panel-body::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+
+/* ---- Footer ---- */
+.ga-panel-footer {
+  padding: 10px 14px;
+  border-top: 1px solid #334155;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---- Toggle Button ---- */
+.ga-panel-toggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 48px;
+  background: #334155;
+  color: #94a3b8;
+  border: none;
+  border-radius: 6px 0 0 6px;
+  cursor: pointer;
+  font-size: 11px;
+  pointer-events: all;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.3);
+}
+.ga-panel-toggle:hover { background: #475569; color: #e2e8f0; }
+
+/* ---- Buttons ---- */
+.ga-btn {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ga-btn-auto { background: #166534; color: #fff; }
+.ga-btn-auto:hover { background: #15803d; }
+.ga-btn-hint { background: #1e40af; color: #fff; }
+.ga-btn-hint:hover { background: #1d4ed8; }
+.ga-btn-stop { background: #854d0e; color: #fff; }
+.ga-btn-stop:hover { background: #a16207; }
+.ga-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---- Status row ---- */
+.ga-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #334155;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.ga-status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ga-status-dot.is-waiting { background: #64748b; }
+.ga-status-dot.is-ready { background: #22c55e; }
+.ga-status-dot.is-busy { background: #eab308; animation: ga-pulse 1s infinite; }
+.ga-status-dot.is-win { background: #22c55e; }
+.ga-status-dot.is-loss { background: #ef4444; }
+
+@keyframes ga-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ---- Hint text ---- */
+.ga-hint {
+  padding: 8px 10px;
+  background: #312e81;
+  border: 1px solid #4338ca;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ---- Solution grid (sudoku) ---- */
+.ga-sudoku-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 1px;
+  background: #475569;
+  border: 2px solid #475569;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+.ga-sudoku-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: #1e293b;
+  color: #e2e8f0;
+}
+.ga-sudoku-cell.is-given { color: #38bdf8; font-weight: 700; }
+.ga-sudoku-cell.is-solved { color: #4ade80; }
+
+/* ---- Step list (puzzle15) ---- */
+.ga-steps {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.ga-step { padding: 2px 4px; border-radius: 3px; }
+.ga-step:nth-child(odd) { background: #334155; }
+
+/* ---- Memory pairs table ---- */
+.ga-memory-table {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+.ga-memory-row {
+  padding: 4px 6px;
+  background: #334155;
+  border-radius: 4px;
+}
+.ga-memory-row.is-matched { background: #14532d; text-decoration: line-through; }
+
+/* ---- Depth slider ---- */
+.ga-depth-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.ga-depth-row input { flex: 1; accent-color: #38bdf8; }
+
+/* ---- Progress bar ---- */
+.ga-progress {
+  height: 4px;
+  background: #334155;
+  border-radius: 2px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.ga-progress-fill {
+  height: 100%;
+  background: #22c55e;
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* ---- Log ---- */
+.ga-log {
+  font-size: 11px;
+  color: #94a3b8;
+  max-height: 120px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+.ga-log-entry { padding: 1px 0; }
+.ga-log-entry.is-error { color: #fca5a5; }
+.ga-log-entry.is-win { color: #86efac; }
+
+/* ---- Speed slider ---- */
+.ga-speed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.ga-speed-row input { flex: 1; accent-color: #38bdf8; }
