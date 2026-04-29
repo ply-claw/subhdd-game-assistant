@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "SubHDD Game Assistant",
+  "version": "0.1.0",
+  "description": "Game assistant for sub.hdd.sb — 2048, memory, puzzle15, sudoku",
+  "permissions": ["storage", "notifications"],
+  "host_permissions": ["https://sub.hdd.sb/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sub.hdd.sb/puzzle2048*",
+        "https://sub.hdd.sb/memory*",
+        "https://sub.hdd.sb/puzzle15*",
+        "https://sub.hdd.sb/sudoku*"
+      ],
+      "js": ["content/main.js"],
+      "css": ["content/ui/panel.css"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["content/inject.js"],
+      "matches": ["https://sub.hdd.sb/*"]
+    }
+  ],
+  "action": {
+    "default_title": "SubHDD Game Assistant",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon.svg",
+      "48": "icons/icon.svg",
+      "128": "icons/icon.svg"
+    }
+  },
+  "icons": {
+    "16": "icons/icon.svg",
+    "48": "icons/icon.svg",
+    "128": "icons/icon.svg"
+  }
+}
