@@ -13,7 +13,15 @@
         "https://sub.hdd.sb/puzzle15*",
         "https://sub.hdd.sb/sudoku*"
       ],
-      "js": ["content/main.js"],
+      "js": [
+        "content/solvers/solver2048.js",
+        "content/solvers/solverMemory.js",
+        "content/solvers/solverPuzzle15.js",
+        "content/solvers/solverSudoku.js",
+        "content/ui/panel.js",
+        "content/runner.js",
+        "content/main.js"
+      ],
       "css": ["content/ui/panel.css"]
     }
   ],
