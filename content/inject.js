@@ -60,8 +60,6 @@
         }
 
         case 'startGame': {
-          const fn = window.startGame || (window.state && window.state.config ? window.startGame : null);
-          // Call the page's startGame(difficulty)
           if (gameType === 'puzzle2048' && typeof window.startGame === 'function') window.startGame(payload.difficulty);
           else if (gameType === 'memory' && typeof window.startGame === 'function') window.startGame(payload.difficulty);
           else if (gameType === 'puzzle15' && typeof window.startGame === 'function') window.startGame(payload.difficulty);
@@ -91,15 +89,6 @@
         case 'abandon': {
           if (typeof window.abandonGame === 'function') window.abandonGame();
           respond({ ok: true });
-          break;
-        }
-
-        case 'getAuth': {
-          try {
-            respond({ token: localStorage.getItem('auth_token') });
-          } catch (e) {
-            respond({ token: null });
-          }
           break;
         }
 
