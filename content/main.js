@@ -116,7 +116,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'startDailyRun') {
     if (typeof Runner !== 'undefined') {
-      Runner.run(msg.depth || 3).then(sendResponse);
+      Runner.run(msg.depth || 3);
+      sendResponse({ ok: true });
     } else {
       sendResponse({ error: 'Runner not loaded' });
     }
@@ -154,6 +155,10 @@ function delay(minMs, maxMs) {
 function init() {
   injectBridge();
   createPanel();
+  // Resume daily run if one was in progress
+  setTimeout(() => {
+    if (typeof Runner !== 'undefined') Runner.resume();
+  }, 1500);
 }
 
 if (document.readyState === 'loading') {
