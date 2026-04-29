@@ -79,6 +79,7 @@ window.addEventListener('message', (ev) => {
     console.log('[GA] bridge ready for', ev.data.data.gameType);
     currentGameType = ev.data.data.gameType;
     updatePanelForGame();
+    setTimeout(refreshState, 500);
   }
   if (ev.data.type === 'stateChanged') {
     refreshState();
@@ -86,17 +87,25 @@ window.addEventListener('message', (ev) => {
 });
 
 function updatePanelForGame() {
-  const names = { puzzle2048: '2048', memory: '记忆翻牌', puzzle15: '华容道', sudoku: '数独' };
-  const body = document.getElementById('ga-panel-body');
-  if (body) {
-    body.innerHTML = `<p style="color:#94a3b8;padding:12px;font-size:12px">${names[currentGameType] || currentGameType} — 检测到游戏页面</p>`;
+  if (currentGameType) {
+    Panel.renderLoading(currentGameType);
   }
 }
 
 async function refreshState() {
   if (!currentGameType) return;
   currentState = await sendCommand('getState');
-  console.log('[GA] state:', currentState);
+  if (currentState && currentState.hasActiveSession) {
+    switch (currentGameType) {
+      case 'puzzle2048': Panel.render2048(currentState); break;
+      case 'memory': Panel.renderMemory(currentState); break;
+      case 'puzzle15': Panel.renderPuzzle15(currentState); break;
+      case 'sudoku': Panel.renderSudoku(currentState); break;
+    }
+    bindButtons();
+  } else {
+    Panel.renderLoading(currentGameType);
+  }
 }
 
 // Listen for popup messages
@@ -120,6 +129,26 @@ async function getDailyStatus() {
     remaining: { checkin: '?', puzzle2048: '?', memory: '?', puzzle15: '?', sudoku: '?' },
     balance: '—',
   };
+}
+
+function bindButtons() {
+  const hintBtn = document.getElementById('ga-btn-show-hint');
+  const autoBtn = document.getElementById('ga-btn-auto');
+  const stopBtn = document.getElementById('ga-btn-stop');
+
+  if (hintBtn) hintBtn.onclick = showHint;
+  if (autoBtn) autoBtn.onclick = startAutoPlay;
+  if (stopBtn) stopBtn.onclick = stopAutoPlay;
+}
+
+function showHint() { console.log('[GA] show hint'); }
+async function startAutoPlay() { console.log('[GA] auto play'); }
+function stopAutoPlay() { console.log('[GA] stop'); }
+
+let autoPlayStopped = false;
+function delay(minMs, maxMs) {
+  const ms = minMs + Math.random() * (maxMs - minMs);
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function init() {
