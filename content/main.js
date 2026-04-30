@@ -498,13 +498,12 @@ async function startAutoPlay() {
         break;
       }
       case 'memory': {
-        // Memory pairs auto-play with proper wait-for-server logic
         let s = readGameState();
         if (!s.hasActiveSession) break;
         const totalCards = (s.session.rows || 4) * (s.session.cols || 4);
-        const known = new Map(); // index → symbol
+        const known = new Map(); // index → symbol ('matched' = done)
 
-        // First collect already known cards
+        // Collect already matched/visible cards
         document.querySelectorAll('.mem-card.is-matched').forEach(c => {
           const idx = parseInt(c.dataset.index);
           if (!isNaN(idx)) known.set(idx, 'matched');
@@ -514,75 +513,75 @@ async function startAutoPlay() {
           if (!isNaN(idx) && c.dataset.symbol) known.set(idx, c.dataset.symbol);
         });
 
-        for (let round = 0; round < totalCards && !autoPlayStoppedFlag; round++) {
-          // Check if all matched
-          const matchedNow = document.querySelectorAll('.mem-card.is-matched').length;
-          if (matchedNow >= totalCards) break;
+        while (!autoPlayStoppedFlag) {
+          if (document.querySelectorAll('.mem-card.is-matched').length >= totalCards) break;
 
-          // Find two unknown cards to flip, or a known pair
-          let firstIdx = -1, secondIdx = -1;
-          const unknowns = [];
-          document.querySelectorAll('.mem-card:not(.is-matched):not(.is-face-up)').forEach(c => {
-            unknowns.push(parseInt(c.dataset.index));
-          });
-
-          if (unknowns.length === 0) break;
-
-          // Strategy: if we have a known symbol match, use it
-          const symToIdx = new Map(); // symbol → index of known revealed card
+          // Step 1: Check if we know a pair (two indices with same symbol)
+          const symToIdx = new Map();
+          let pairA = -1, pairB = -1;
           for (const [idx, sym] of known) {
             if (sym === 'matched') continue;
-            if (symToIdx.has(sym)) {
-              // Found a matching pair!
-              firstIdx = symToIdx.get(sym);
-              secondIdx = idx;
-              break;
-            }
+            if (symToIdx.has(sym)) { pairA = symToIdx.get(sym); pairB = idx; break; }
             symToIdx.set(sym, idx);
           }
 
-          if (firstIdx < 0) {
-            // No known pair — flip first unknown
-            firstIdx = unknowns[0];
-            const result1 = await actFlipWait(firstIdx);
-            if (result1 && result1 !== 'matched') known.set(firstIdx, result1);
-            if (result1 === 'matched') { known.set(firstIdx, 'matched'); continue; }
-            if (!result1) continue; // timeout
-
-            // Update panel
-            Panel.showHint(`翻第${firstIdx+1}张: ${result1} — 寻找配对...`);
-
-            // Check if we now know a pair
-            const curSym = result1;
-            let matchIdx = -1;
-            for (const [idx, sym] of known) {
-              if (sym === 'matched') continue;
-              if (sym === curSym && idx !== firstIdx) { matchIdx = idx; break; }
-            }
-
-            if (matchIdx >= 0) {
-              secondIdx = matchIdx;
-            } else {
-              // Flip next unknown
-              const nextUnknown = unknowns.find(u => u !== firstIdx);
-              if (nextUnknown === undefined) break;
-              secondIdx = nextUnknown;
-            }
-          }
-
-          if (secondIdx >= 0) {
-            const result2 = await actFlipWait(secondIdx);
-            if (result2 && result2 !== 'matched') known.set(secondIdx, result2);
-            if (result2 === 'matched') { known.set(secondIdx, 'matched'); continue; }
-
-            Panel.showHint(`翻第${secondIdx+1}张: ${result2}`);
-
-            // Wait for mismatch resolution if needed
+          if (pairA >= 0 && pairB >= 0) {
+            // Known pair — flip both
+            Panel.showHint(`匹配已知对: #${pairA+1} 和 #${pairB+1}`);
+            await actFlipWait(pairA);
+            const r2 = await actFlipWait(pairB);
+            if (r2 === 'matched') { known.set(pairA, 'matched'); known.set(pairB, 'matched'); }
             await waitMismatchResolve();
-
-            // Update panel to show current known state
             updateMemoryPanel(known, totalCards);
+            continue;
           }
+
+          // Step 2: Find cards we haven't seen at all
+          const unseen = [];
+          for (let i = 0; i < totalCards; i++) {
+            if (!known.has(i)) unseen.push(i);
+          }
+
+          // Step 3: Find seen-but-unmatched cards
+          const seenUnmatched = [];
+          for (const [idx, sym] of known) {
+            if (sym !== 'matched') seenUnmatched.push(idx);
+          }
+
+          if (unseen.length === 0 && seenUnmatched.length === 0) break;
+
+          // Flip first card: prefer an unseen one, or a seen unmatched one
+          const firstIdx = unseen.length > 0 ? unseen[0] : seenUnmatched[0];
+          const r1 = await actFlipWait(firstIdx);
+          if (!r1 || r1 === 'matched') { if (r1 === 'matched') known.set(firstIdx, 'matched'); continue; }
+          known.set(firstIdx, r1);
+          Panel.showHint(`翻#${firstIdx+1}: ${r1}`);
+
+          // Step 4: Check if we now know this symbol's pair
+          let matchIdx = -1;
+          for (const [idx, sym] of known) {
+            if (sym === 'matched' || idx === firstIdx) continue;
+            if (sym === r1) { matchIdx = idx; break; }
+          }
+
+          if (matchIdx >= 0) {
+            // Found the pair — flip it
+            const r2 = await actFlipWait(matchIdx);
+            if (r2 === 'matched') { known.set(firstIdx, 'matched'); known.set(matchIdx, 'matched'); }
+            await waitMismatchResolve();
+          } else {
+            // Don't know the pair — flip another unseen or seen card
+            const remainingUnseen = unseen.filter(u => u !== firstIdx);
+            const secondIdx = remainingUnseen.length > 0 ? remainingUnseen[0]
+              : (seenUnmatched.find(s => s !== firstIdx) ?? unseen[0]);
+            if (secondIdx === undefined) break;
+            const r2 = await actFlipWait(secondIdx);
+            if (r2 && r2 !== 'matched') known.set(secondIdx, r2);
+            if (r2 === 'matched') { known.set(secondIdx, 'matched'); }
+            await waitMismatchResolve();
+          }
+
+          updateMemoryPanel(known, totalCards);
         }
         break;
       }
