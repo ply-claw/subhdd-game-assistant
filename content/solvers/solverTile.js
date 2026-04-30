@@ -101,10 +101,16 @@ const SolverTile = (() => {
       const all = [...sl, pattern];
       const counts = {};
       for (const p of all) counts[p] = (counts[p] || 0) + 1;
-      return all.filter(p => {
-        if (counts[p] >= 3) { counts[p] -= 3; return false; }
-        return true;
-      });
+      // Keep only the remainder after removing groups of 3 (preserving FIFO order)
+      const keep = {};
+      for (const [p, c] of Object.entries(counts)) keep[p] = c % 3;
+      const result = [];
+      const used = {};
+      for (const p of all) {
+        used[p] = (used[p] || 0) + 1;
+        if (used[p] <= keep[p]) result.push(p);
+      }
+      return result;
     }
 
     function search(remaining, slot, depth) {
