@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2048 3×3 Solver Test</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #1a1a2e; color: #e0e0e0; padding: 20px; }
+  h1 { color: #38bdf8; margin-bottom: 8px; font-size: 18px; }
+  .controls { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; align-items: center; }
+  .controls label { font-size: 12px; color: #94a3b8; }
+  .controls input, .controls select, .controls button {
+    background: #1e293b; color: #e0e0e0; border: 1px solid #334155;
+    padding: 6px 10px; border-radius: 4px; font-family: monospace; font-size: 12px;
+  }
+  button { cursor: pointer; background: #2563eb; border: none; font-weight: bold; }
+  button:hover { background: #3b82f6; }
+  button.stop { background: #dc2626; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin: 12px 0; }
+  .stat { background: #1e293b; padding: 10px 12px; border-radius: 6px; text-align: center; }
+  .stat .val { font-size: 24px; font-weight: bold; color: #38bdf8; }
+  .stat .lbl { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+  .board-container { display: flex; gap: 20px; flex-wrap: wrap; }
+  .game-board { display: inline-grid; gap: 4px; padding: 8px; background: #0f172a; border-radius: 8px; }
+  .cell {
+    width: 70px; height: 70px; display: flex; align-items: center; justify-content: center;
+    border-radius: 6px; font-size: 22px; font-weight: bold; background: #334155;
+    transition: all 0.1s;
+  }
+  .cell.merged { animation: mergePop 0.15s ease; }
+  @keyframes mergePop { 0%{transform:scale(1)} 50%{transform:scale(1.15)} 100%{transform:scale(1)} }
+  .log { max-height: 400px; overflow-y: auto; font-size: 11px; line-height: 1.6; margin-top: 12px; background: #0f172a; padding: 10px; border-radius: 6px; }
+  .log .win { color: #4ade80; }
+  .log .loss { color: #f87171; }
+  .log .info { color: #94a3b8; }
+  .tile-2    { background: #eee4da; color: #776e65; }
+  .tile-4    { background: #ede0c8; color: #776e65; }
+  .tile-8    { background: #f2b179; color: #f9f6f2; }
+  .tile-16   { background: #f59563; color: #f9f6f2; }
+  .tile-32   { background: #f67c5f; color: #f9f6f2; }
+  .tile-64   { background: #f65e3b; color: #f9f6f2; }
+  .tile-128  { background: #edcf72; color: #f9f6f2; font-size: 18px; }
+  .tile-256  { background: #edcc61; color: #f9f6f2; font-size: 18px; }
+  .tile-512  { background: #edc850; color: #f9f6f2; font-size: 18px; }
+  .tile-1024 { background: #edc53f; color: #f9f6f2; font-size: 15px; }
+  .tile-2048 { background: #edc22e; color: #f9f6f2; font-size: 15px; }
+</style>
+</head>
+<body>
+<h1>2048 3×3 Solver Test</h1>
+
+<div class="controls">
+  <label>游戏盘数:</label>
+  <input type="number" id="num-games" value="100" min="1" max="10000" style="width:60px">
+  <label>搜索深度:</label>
+  <select id="depth">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3" selected>3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+  </select>
+  <label>目标:</label>
+  <select id="target">
+    <option value="256">256</option>
+    <option value="512" selected>512</option>
+    <option value="1024">1024</option>
+  </select>
+  <label>显示棋盘:</label>
+  <input type="checkbox" id="show-board" checked>
+  <button id="btn-start" onclick="startBatch()">▶ 批量测试</button>
+  <button class="stop" id="btn-stop" onclick="stopBatch()" disabled>⏹ 停止</button>
+  <button onclick="runSingle()">▶ 单局</button>
+</div>
+
+<div class="stats">
+  <div class="stat"><div class="val" id="st-played">0</div><div class="lbl">已测</div></div>
+  <div class="stat"><div class="val" id="st-won">0</div><div class="lbl">胜</div></div>
+  <div class="stat"><div class="val" id="st-rate">-</div><div class="lbl">胜率</div></div>
+  <div class="stat"><div class="val" id="st-avg-score">-</div><div class="lbl">均分</div></div>
+  <div class="stat"><div class="val" id="st-avg-moves">-</div><div class="lbl">均步</div></div>
+  <div class="stat"><div class="val" id="st-avg-max">-</div><div class="lbl">均最高</div></div>
+  <div class="stat"><div class="val" id="st-avg-ms">-</div><div class="lbl">均耗时ms</div></div>
+</div>
+
+<div class="board-container">
+  <div id="board" class="game-board"></div>
+  <div id="info" style="font-size:12px;color:#94a3b8;line-height:1.8"></div>
+</div>
+
+<div class="log" id="log"></div>
+
+<script>
+'use strict';
+
+// ===================== 2048 Game Engine (3x3) =====================
+const SIZE = 3;
+const TARGET = 512; // default, configurable
+
+function createBoard() {
+  return Array.from({length: SIZE}, () => Array(SIZE).fill(0));
+}
+
+function addRandomTile(board) {
+  const empties = [];
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (board[r][c] === 0) empties.push({r, c});
+  if (empties.length === 0) return false;
+  const pos = empties[Math.floor(Math.random() * empties.length)];
+  board[pos.r][pos.c] = Math.random() < 0.9 ? 2 : 4;
+  return true;
+}
+
+function initBoard() {
+  const b = createBoard();
+  addRandomTile(b);
+  addRandomTile(b);
+  return b;
+}
+
+function slideLine(line) {
+  let arr = line.filter(v => v !== 0);
+  let score = 0;
+  for (let i = 0; i < arr.length - 1; i++) {
+    if (arr[i] === arr[i + 1]) { arr[i] *= 2; score += arr[i]; arr[i + 1] = 0; i++; }
+  }
+  return { line: arr.filter(v => v !== 0), score };
+}
+
+function move(board, direction) {
+  const nb = createBoard();
+  let score = 0;
+  if (direction === 'left') {
+    for (let r = 0; r < SIZE; r++) {
+      const res = slideLine(board[r]);
+      for (let c = 0; c < res.line.length; c++) nb[r][c] = res.line[c];
+      score += res.score;
+    }
+  } else if (direction === 'right') {
+    for (let r = 0; r < SIZE; r++) {
+      const res = slideLine([...board[r]].reverse());
+      for (let c = 0; c < res.line.length; c++) nb[r][SIZE - 1 - c] = res.line[c];
+      score += res.score;
+    }
+  } else if (direction === 'up') {
+    for (let c = 0; c < SIZE; c++) {
+      const col = board.map(row => row[c]);
+      const res = slideLine(col);
+      for (let r = 0; r < res.line.length; r++) nb[r][c] = res.line[r];
+      score += res.score;
+    }
+  } else if (direction === 'down') {
+    for (let c = 0; c < SIZE; c++) {
+      const col = board.map(row => row[c]).reverse();
+      const res = slideLine(col);
+      for (let r = 0; r < res.line.length; r++) nb[SIZE - 1 - r][c] = res.line[r];
+      score += res.score;
+    }
+  }
+  let changed = false;
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (nb[r][c] !== board[r][c]) changed = true;
+  return { board: nb, score, changed };
+}
+
+function isGameOver(board) {
+  const dirs = ['up','down','left','right'];
+  return dirs.every(d => !move(board, d).changed);
+}
+
+function hasWon(board, target) {
+  return board.some(row => row.some(v => v >= target));
+}
+
+function countEmpty(board) {
+  let n = 0;
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (board[r][c] === 0) n++;
+  return n;
+}
+
+function maxTile(board) {
+  let m = 0;
+  for (let r = 0; r < SIZE; r++)
+    for (let c = 0; c < SIZE; c++)
+      if (board[r][c] > m) m = board[r][c];
+  return m;
+}
+
+// ===================== Solver (from solver2048.js) =====================
+let Solver = null;
+document.addEventListener('DOMContentLoaded', () => { Solver = Solver2048; });
+</script>
+
+<!-- Load our solver -->
+<script src="../content/solvers/solver2048.js"></script>
+
+<script>
+// ===================== UI =====================
+let stopFlag = false;
+
+function renderBoard(board) {
+  const el = document.getElementById('board');
+  el.style.gridTemplateColumns = `repeat(${SIZE}, 70px)`;
+  el.innerHTML = '';
+  for (let r = 0; r < SIZE; r++) {
+    for (let c = 0; c < SIZE; c++) {
+      const v = board[r][c];
+      const cell = document.createElement('div');
+      cell.className = 'cell' + (v > 0 ? ` tile-${Math.min(v, 2048)}` : '');
+      cell.textContent = v || '';
+      el.appendChild(cell);
+    }
+  }
+}
+
+function log(msg, cls) {
+  const el = document.getElementById('log');
+  el.innerHTML += `<div class="${cls || ''}">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+
+function updateStats(played, won, totalScore, totalMoves, totalMax, totalMs) {
+  document.getElementById('st-played').textContent = played;
+  document.getElementById('st-won').textContent = won;
+  document.getElementById('st-rate').textContent = played > 0 ? (won / played * 100).toFixed(1) + '%' : '-';
+  document.getElementById('st-avg-score').textContent = played > 0 ? Math.round(totalScore / played) : '-';
+  document.getElementById('st-avg-moves').textContent = played > 0 ? Math.round(totalMoves / played) : '-';
+  document.getElementById('st-avg-max').textContent = played > 0 ? Math.round(totalMax / played) : '-';
+  document.getElementById('st-avg-ms').textContent = played > 0 ? Math.round(totalMs / played) : '-';
+}
+
+// ===================== Game loop =====================
+function playOneGame(target, depth, showBoard) {
+  const board = initBoard();
+  let score = 0, moves = 0;
+  const startMs = Date.now();
+
+  if (showBoard) renderBoard(board);
+
+  while (true) {
+    const best = Solver.getBestMove(board, depth);
+    if (!best || !best.direction) break;
+
+    const { board: nb, score: s, changed } = move(board, best.direction);
+    if (!changed) break; // stuck
+
+    board.forEach((row, r) => row.forEach((v, c) => { board[r][c] = nb[r][c]; }));
+    score += s;
+    moves++;
+
+    addRandomTile(board);
+    if (showBoard) renderBoard(board);
+
+    if (hasWon(board, target)) {
+      document.getElementById('info').textContent = `✅ WIN! 分数:${score} 步数:${moves} 耗时:${Date.now()-startMs}ms`;
+      return { won: true, score, moves, max: maxTile(board), ms: Date.now() - startMs };
+    }
+    if (isGameOver(board)) {
+      document.getElementById('info').textContent = `❌ LOSS 分数:${score} 步数:${moves} 最高:${maxTile(board)} 耗时:${Date.now()-startMs}ms`;
+      return { won: false, score, moves, max: maxTile(board), ms: Date.now() - startMs };
+    }
+  }
+  return { won: false, score, moves, max: maxTile(board), ms: Date.now() - startMs };
+}
+
+async function runSingle() {
+  stopFlag = false;
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+  clearLog();
+
+  const target = parseInt(document.getElementById('target').value);
+  const depth = parseInt(document.getElementById('depth').value);
+  const showBoard = document.getElementById('show-board').checked;
+  document.getElementById('info').textContent = '';
+  updateStats(0,0,0,0,0,0);
+
+  log(`单局测试 3×3 目标${target} 深度${depth}`, 'info');
+  const result = playOneGame(target, depth, showBoard);
+  log(result.won ? `✅ 胜! 分数${result.score} 步${result.moves} 最高${result.max} ${result.ms}ms` : `❌ 败 分数${result.score} 步${result.moves} 最高${result.max} ${result.ms}ms`, result.won ? 'win' : 'loss');
+  updateStats(1, result.won ? 1 : 0, result.score, result.moves, result.max, result.ms);
+
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+}
+
+async function startBatch() {
+  stopFlag = false;
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+  clearLog();
+
+  const numGames = parseInt(document.getElementById('num-games').value);
+  const target = parseInt(document.getElementById('target').value);
+  const depth = parseInt(document.getElementById('depth').value);
+  document.getElementById('info').textContent = '';
+  document.getElementById('show-board').checked = false;
+
+  let played = 0, won = 0, totalScore = 0, totalMoves = 0, totalMax = 0, totalMs = 0;
+  updateStats(0,0,0,0,0,0);
+  log(`开始批量测试: ${numGames}局 3×3 目标${target} 深度${depth}`, 'info');
+
+  const batchStart = Date.now();
+
+  for (let i = 0; i < numGames; i++) {
+    if (stopFlag) { log('⏹ 已被用户停止', 'info'); break; }
+    const result = playOneGame(target, depth, false);
+    played++; if (result.won) won++;
+    totalScore += result.score; totalMoves += result.moves;
+    totalMax += result.max; totalMs += result.ms;
+
+    if ((i + 1) % 10 === 0 || i === numGames - 1) {
+      updateStats(played, won, totalScore, totalMoves, totalMax, totalMs);
+      const pct = (won / played * 100).toFixed(1);
+      log(`[${played}/${numGames}] 胜率:${pct}% 均分:${Math.round(totalScore/played)} 均步:${Math.round(totalMoves/played)} 均最高:${Math.round(totalMax/played)} 均耗时:${Math.round(totalMs/played)}ms`, 'info');
+    }
+
+    // Yield to UI thread
+    if (i % 5 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  const elapsed = ((Date.now() - batchStart) / 1000).toFixed(1);
+  log(`\n完成! ${played}局 胜率 ${(won/played*100).toFixed(1)}% 总耗时 ${elapsed}s`, won/played > 0.7 ? 'win' : 'loss');
+
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+}
+
+function stopBatch() { stopFlag = true; }
+
+// Initialize
+document.getElementById('info').textContent = '点击"单局"或"批量测试"开始';
+</script>
+</body>
+</html>
