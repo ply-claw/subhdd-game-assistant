@@ -15,6 +15,7 @@ function detectGame() {
   if (path.startsWith('/memory')) return 'memory';
   if (path.startsWith('/puzzle15')) return 'puzzle15';
   if (path.startsWith('/sudoku')) return 'sudoku';
+  if (path.startsWith('/tile')) return 'tile';
   return null;
 }
 
@@ -38,6 +39,7 @@ function readSessionDOM() {
     case 'memory': return readMemoryState();
     case 'puzzle15': return readPuzzle15State();
     case 'sudoku': return readSudokuState();
+    case 'tile': return readTileState();
     default: return null;
   }
 }
@@ -180,6 +182,25 @@ async function wait2048Update(prevMoveCount) {
   return false; // timeout
 }
 
+function readTileState() {
+  const playPanel = document.getElementById('tile-desk');
+  if (!playPanel || playPanel.hidden) return null;
+  return {
+    difficulty: document.getElementById('cur-difficulty')?.textContent?.trim() || '?',
+    moveCount: parseInt(document.getElementById('move-count')?.textContent) || 0,
+    remaining: parseInt(document.getElementById('remaining-count')?.textContent) || 0,
+    slotCount: parseInt(document.getElementById('slot-count')?.textContent) || 0,
+    slotLimit: parseInt(document.getElementById('slot-limit')?.textContent) || 7,
+    uncovered: SolverTile.getUncoveredTiles().length,
+  };
+}
+
+// Tile action: click a specific tile
+function actClickTile(tileId) {
+  const el = document.querySelector(`#tile-stage [data-id="${tileId}"]`);
+  if (el && SolverTile.isTileClickable(el)) el.click();
+}
+
 function actFlip(index) {
   const card = document.querySelector(`.mem-card[data-index="${index}"]`);
   if (card) card.click();
@@ -285,6 +306,7 @@ function updatePanel() {
       case 'memory': Panel.renderMemory(currentState); break;
       case 'puzzle15': Panel.renderPuzzle15(currentState); break;
       case 'sudoku': Panel.renderSudoku(currentState); break;
+      case 'tile': Panel.renderTile(currentState); break;
     }
     bindButtons();
   } else {
@@ -422,6 +444,14 @@ async function showHint() {
       const sol = SolverSudoku.solve(sess.givens);
       if (sol) renderSudokuGrid(sol, sess.givens);
       else Panel.showHint('无法求解');
+      break;
+    }
+    case 'tile': {
+      const uncovered = SolverTile.getUncoveredTiles();
+      const slot = SolverTile.getSlotContents();
+      const sug = SolverTile.suggestNext(uncovered, slot);
+      if (sug) Panel.showHint(`点 #${sug.tile.id}: ${sug.tile.pattern} (${sug.reason})`);
+      else Panel.showHint('无可用方块');
       break;
     }
   }
@@ -630,6 +660,35 @@ async function startAutoPlay() {
         }
         break;
       }
+      case 'tile': {
+        while (!autoPlayStoppedFlag) {
+          await delay(300, 600);
+          const status = document.getElementById('page-status');
+          if (status && status.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
+          if (status && status.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
+
+          const uncovered = SolverTile.getUncoveredTiles();
+          const slot = SolverTile.getSlotContents();
+          const sug = SolverTile.suggestNext(uncovered, slot);
+          if (!sug) { Panel.setStatus('无可用方块', 'loss'); break; }
+
+          const prevRemaining = document.getElementById('remaining-count')?.textContent;
+          const prevSlot = document.getElementById('slot-count')?.textContent;
+          Panel.showHint(`点 ${sug.tile.pattern} (${sug.reason})`);
+          actClickTile(sug.tile.id);
+
+          for (let w = 0; w < 40; w++) {
+            await delay(100, 150);
+            const st = document.getElementById('page-status');
+            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
+            const curRemaining = document.getElementById('remaining-count')?.textContent;
+            const curSlot = document.getElementById('slot-count')?.textContent;
+            if (curRemaining !== prevRemaining || curSlot !== prevSlot) break;
+          }
+        }
+        break;
+      }
+
     }
     Panel.setStatus('完成', 'win');
   } catch (e) {

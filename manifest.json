@@ -11,13 +11,15 @@
         "https://sub.hdd.sb/puzzle2048*",
         "https://sub.hdd.sb/memory*",
         "https://sub.hdd.sb/puzzle15*",
-        "https://sub.hdd.sb/sudoku*"
+        "https://sub.hdd.sb/sudoku*",
+        "https://sub.hdd.sb/tile*"
       ],
       "js": [
         "content/solvers/solver2048.js",
         "content/solvers/solverMemory.js",
         "content/solvers/solverPuzzle15.js",
         "content/solvers/solverSudoku.js",
+        "content/solvers/solverTile.js",
         "content/ui/panel.js",
         "content/runner.js",
         "content/main.js"

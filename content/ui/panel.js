@@ -133,13 +133,32 @@ const Panel = {
 
   // --- Loading ---
   renderLoading(gameType) {
-    const names = { puzzle2048: '2048', memory: '记忆翻牌', puzzle15: '华容道', sudoku: '数独' };
+    const names = { puzzle2048: '2048', memory: '记忆翻牌', puzzle15: '华容道', sudoku: '数独', tile: '羊了个羊' };
     this.setBody(`
       <div class="ga-status-row" id="ga-status-row">
         <span class="ga-status-dot is-waiting"></span>
         ${names[gameType] || gameType} — 未开始
       </div>
       <p style="color:#94a3b8;font-size:12px;padding:4px 0">选择难度开始游戏后，这里会显示辅助面板</p>
+    `);
+  },
+
+  // --- Tile specific ---
+  renderTile(state) {
+    const sess = state.session;
+    this.setBody(`
+      <div class="ga-status-row" id="ga-status-row">
+        <span class="ga-status-dot is-ready"></span>
+        进行中 · ${sess.difficulty || '?'}
+      </div>
+      <div id="ga-hint" class="ga-hint">点击自动完成开始</div>
+      <div style="font-size:12px;color:#94a3b8;line-height:1.6">
+        剩余: ${sess.remaining || 0} · 已翻: ${sess.uncovered || 0} · 槽: ${sess.slotCount || 0}/${sess.slotLimit || 7}
+      </div>
+    `);
+    this.setFooter(`
+      <button class="ga-btn ga-btn-auto" id="ga-btn-auto">自动完成本局</button>
+      <button class="ga-btn ga-btn-stop" id="ga-btn-stop">停止</button>
     `);
   },
 
