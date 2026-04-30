@@ -191,8 +191,15 @@ const Runner = (() => {
           for (const step of sol) {
             if (s.stopRequested) return 'stopped';
             const tileEl = document.querySelector(`.p15-tile[data-value="${step.tile}"]`);
+            const posBefore = tileEl ? {left: tileEl.style.left, top: tileEl.style.top} : null;
             if (tileEl) tileEl.click();
-            await delay();
+            // Wait for move to process
+            for (let w = 0; w < 20; w++) {
+              await delay();
+              const tAfter = document.querySelector(`.p15-tile[data-value="${step.tile}"]`);
+              if (posBefore && tAfter && (tAfter.style.left !== posBefore.left || tAfter.style.top !== posBefore.top)) break;
+              if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+            }
           }
           return 'won';
         }

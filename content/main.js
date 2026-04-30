@@ -442,14 +442,39 @@ async function startAutoPlay() {
         break;
       }
       case 'puzzle15': {
-        const s = readGameState();
+        let s = readGameState();
         if (!s.hasActiveSession) break;
-        const sol = SolverPuzzle15.solve(s.session.board, s.session.size);
+        let sol = SolverPuzzle15.solve(s.session.board, s.session.size);
         if (!sol) { Panel.showHint('无法求解'); break; }
-        for (const step of sol) {
+        for (let i = 0; i < sol.length; i++) {
           if (autoPlayStoppedFlag) break;
+          const step = sol[i];
+          // Record tile positions before click
+          const tileBefore = document.querySelector(`.p15-tile[data-value="${step.tile}"]`);
+          const posBefore = tileBefore ? { left: tileBefore.style.left, top: tileBefore.style.top } : null;
           actMoveTile(step.tile);
-          await delay(200, 500);
+          // Wait for the server to process and DOM to update
+          for (let w = 0; w < 30; w++) {
+            await delay(100, 150);
+            if (s.session.won) break;
+            // Check if tile position changed (server processed the move)
+            const tileAfter = document.querySelector(`.p15-tile[data-value="${step.tile}"]`);
+            if (tileAfter && posBefore) {
+              if (tileAfter.style.left !== posBefore.left || tileAfter.style.top !== posBefore.top) break;
+            }
+            // Also check if the game status changed
+            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+          }
+          // Update state
+          s = readGameState();
+          if (!s.hasActiveSession) break;
+          // Update step display
+          const stepsEl = document.getElementById('ga-steps');
+          if (stepsEl && i < sol.length - 1) {
+            stepsEl.innerHTML = sol.slice(i + 1).map((st, j) =>
+              `<div class="ga-step" style="${j===0?'color:#fbbf24':''}">${i+j+2}. 移动 ${st.tile}</div>`
+            ).slice(0, 15).join('');
+          }
         }
         break;
       }
