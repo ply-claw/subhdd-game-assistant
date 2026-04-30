@@ -117,6 +117,11 @@ const SolverTile = (() => {
       const unc = getUncoveredIds(remaining);
       if (unc.length === 0) { failCache.add(h); return false; }
 
+      // Log depth progress intermittently
+      if (depth <= 3 || depth % 10 === 0) {
+        console.log('[tile] depth', depth, 'remaining:', remaining.size, 'slot:', slot.length, 'unc:', unc.length);
+      }
+
       // Prioritize: complete 3-set > 2-of-3 > expose more tiles
       const slCounts = {};
       for (const p of slot) slCounts[p] = (slCounts[p] || 0) + 1;
@@ -129,15 +134,21 @@ const SolverTile = (() => {
         return (byId[b].covers.length) - (byId[a].covers.length);
       });
 
+      let branches = 0;
       for (const id of unc) {
         const newRem = new Set(remaining);
         newRem.delete(id);
         const newSlot = applySlot(slot, byId[id].pattern);
         if (newSlot.length >= 7) continue;
 
+        branches++;
         solution.push(id);
         if (search(newRem, newSlot, depth + 1)) return true;
         solution.pop();
+      }
+
+      if (branches === 0 && depth <= 5) {
+        console.warn('[tile] all branches blocked at depth', depth, 'slot:', slot, 'unc:', unc.length);
       }
 
       failCache.add(h);
