@@ -21,9 +21,16 @@ const SolverTile = (() => {
         pattern: el.dataset.pattern,
         z: parseInt(getComputedStyle(el).zIndex) || 0,
         rect: { l: r.left, r: r.right, t: r.top, b: r.bottom },
+        el,
+        isCovered: el.classList.contains('is-covered'),
       });
     });
     return tiles;
+  }
+
+  // Use game's own is-covered class (matches server's isCoveredBy check)
+  function isUncovered(el) {
+    return !el.classList.contains('is-covered');
   }
 
   function covers(a, b) {
@@ -53,8 +60,12 @@ const SolverTile = (() => {
   }
 
   function getUncoveredTiles() {
-    const { tiles } = buildGraph();
-    return tiles.filter(t => !tiles.some(o => covers(o, t)));
+    // Use game's is-covered class directly from DOM
+    const tiles = [];
+    document.querySelectorAll('#tile-stage [data-id]:not(.is-covered)').forEach(el => {
+      tiles.push({ id: el.dataset.id, pattern: el.dataset.pattern, el });
+    });
+    return tiles;
   }
 
   function getSlotContents() {
@@ -78,7 +89,10 @@ const SolverTile = (() => {
       const unc = [];
       for (const id of rem) {
         const t = byId[id];
-        if (!t.coveredBy.some(cid => rem.has(cid))) unc.push(id);
+        // Use game's is-covered class (most reliable) OR our z-index overlap check
+        if (t.isCovered) continue;
+        if (t.coveredBy.some(cid => rem.has(cid))) continue;
+        unc.push(id);
       }
       return unc;
     }
@@ -154,8 +168,7 @@ const SolverTile = (() => {
 
   // ---- Simple suggestion (for hint button) ----
   function suggestNext() {
-    const { tiles, byId } = buildGraph();
-    const uncovered = tiles.filter(t => !tiles.some(o => covers(o, t)));
+    const uncovered = getUncoveredTiles();
     const slot = getSlotContents();
 
     if (uncovered.length === 0) return null;
