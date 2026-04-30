@@ -31,6 +31,13 @@ function readGameState() {
 }
 
 function readSessionDOM() {
+  // Tile game uses different DOM structure
+  if (currentGameType === 'tile') {
+    const desk = document.getElementById('tile-desk');
+    if (!desk || desk.hidden) return null;
+    return readTileState();
+  }
+
   const playPanel = document.getElementById('play-panel');
   if (!playPanel || playPanel.hidden) return null;
 
@@ -39,7 +46,6 @@ function readSessionDOM() {
     case 'memory': return readMemoryState();
     case 'puzzle15': return readPuzzle15State();
     case 'sudoku': return readSudokuState();
-    case 'tile': return readTileState();
     default: return null;
   }
 }
