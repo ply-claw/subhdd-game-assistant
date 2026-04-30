@@ -222,7 +222,11 @@ const Runner = (() => {
             if (cell) cell.click();
             const btn = document.querySelector(`.np-btn[data-val="${sol[i]}"]`);
             if (btn) btn.click();
-            await delay();
+            // Wait for server to process the fill
+            for (let w = 0; w < 20; w++) {
+              await delay();
+              if (cell && cell.textContent.trim() === String(sol[i])) break;
+            }
           }
           return 'won';
         }

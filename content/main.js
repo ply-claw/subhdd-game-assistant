@@ -488,7 +488,12 @@ async function startAutoPlay() {
           if (s.session.givens[i] !== 0) continue;
           const r = Math.floor(i / 9), c = i % 9;
           actFillCell(r, c, sol[i]);
-          await delay(150, 400);
+          // Wait for server to process: cell textContent should show the new value
+          const cell = document.querySelector(`.sudoku-cell[data-row="${r}"][data-col="${c}"]`);
+          for (let w = 0; w < 30; w++) {
+            await delay(100, 150);
+            if (cell && cell.textContent.trim() === String(sol[i])) break;
+          }
         }
         break;
       }
