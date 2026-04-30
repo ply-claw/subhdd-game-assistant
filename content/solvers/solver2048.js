@@ -194,9 +194,9 @@ const Solver2048 = (() => {
     return Math.max(sx1, sx2) + Math.max(sy1, sy2);
   }
 
-  // Native evaluation for 3×3 (3-tile rows, no padding)
-  function evaluate3x3(board) {
-    const size = 3;
+  // Native evaluation for 3×3 and 5×5 (uses generalized evaluateRow directly)
+  function evaluateNxN(board) {
+    const size = getSize(board);
     const w = Array.from({ length: size }, () => Array(size).fill(0));
     for (let r = 0; r < size; r++)
       for (let c = 0; c < size; c++)
@@ -204,12 +204,13 @@ const Solver2048 = (() => {
 
     let sx1 = 0, sx2 = 0, sy1 = 0, sy2 = 0;
     for (let r = 0; r < size; r++) {
-      const row = [w[r][0], w[r][1], w[r][2]];
+      const row = w[r].slice();
       sx1 += evaluateRow(row);
       sx2 += evaluateRow([...row].reverse());
     }
     for (let c = 0; c < size; c++) {
-      const col = [w[0][c], w[1][c], w[2][c]];
+      const col = [];
+      for (let r = 0; r < size; r++) col.push(w[r][c]);
       sy1 += evaluateRow(col);
       sy2 += evaluateRow([...col].reverse());
     }
@@ -218,8 +219,8 @@ const Solver2048 = (() => {
 
   function evaluate(board) {
     const size = getSize(board);
-    if (size === 3) return evaluate3x3(board);
-    return evaluate4x4(board); // works for 4×4 and 5×5 (with padding)
+    if (size === 4) return evaluate4x4(board); // precomputed 65536-row table (matching C++)
+    return evaluateNxN(board); // 3×3 and 5×5: generalized evaluateRow
   }
 
   function processScore(s) {
