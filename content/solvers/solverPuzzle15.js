@@ -96,7 +96,7 @@ const SolverPuzzle15 = (() => {
     const moves = [];
     for (const nextZ of path) {
       const curZ = board.indexOf(0);
-      if (locked && locked.has(nextZ)) {
+      if (tileLock && tileLock.has(nextZ)) {
         // This shouldn't happen because we filter in BFS
         return null;
       }
