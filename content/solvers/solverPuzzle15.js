@@ -156,7 +156,7 @@ const SolverPuzzle15 = (() => {
     heap.push({ board, g: 0, f: h(board) * 2, path: [] }); // w=2 weighted A*
     const bestG = new Map([[startKey, 0]]);
     let iter = 0;
-    const MAX = 32000000;
+    const MAX = 4000000;
 
     if (prog) { prog.maxBound = MAX; prog.iter = 0; }
 
@@ -186,32 +186,41 @@ const SolverPuzzle15 = (() => {
   async function solve(board, size, prog) {
     if (size <= 4) return await solveIDA(board, size, prog);
 
-    // 5×5: 3-phase search
+    // 5×5: 4-phase search
     const DL = Date.now() + 600000;
     let cur = board.slice();
     const allMoves = [];
-    if (prog) { prog.maxBound = 3; prog.bound = 0; }
+    if (prog) { prog.maxBound = 4; prog.bound = 0; }
 
-    // Phase 1: Solve first row (tiles 1..5 at positions 0..4)
-    const rowGoal = new Set([0, 1, 2, 3, 4]);
-    const noLock = new Set();
+    // Phase 1: Solve first 2 row tiles (positions 0,1)
+    const goal1 = new Set([0, 1]);
     if (prog) prog.bound = 1;
-    let moves = await phasedSearch(cur, size, rowGoal, noLock, cur, DL, prog, 'row');
+    let moves = await phasedSearch(cur, size, goal1, new Set(), cur, DL, prog);
     if (!moves) return null;
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
 
-    // Phase 2: Lock row 0, solve first column (tiles at positions 5,10,15,20)
-    const colGoal = new Set([5, 10, 15, 20]);
-    const rowLock = new Set([0, 1, 2, 3, 4]);
-    const original2 = cur.slice();
+    // Phase 2: Lock first 2, solve last 3 row tiles (positions 2,3,4)
+    const goal2 = new Set([2, 3, 4]);
+    const lock2 = new Set([0, 1]);
+    const orig2 = cur.slice();
     if (prog) prog.bound = 2;
-    moves = await phasedSearch(cur, size, colGoal, rowLock, original2, DL, prog, 'col');
+    moves = await phasedSearch(cur, size, goal2, lock2, orig2, DL, prog);
     if (!moves) return null;
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
 
-    // Phase 3: Lock row 0 + col 0, extract 4×4 and IDA*
+    // Phase 3: Lock row 0, solve first column (positions 5,10,15,20)
+    const goal3 = new Set([5, 10, 15, 20]);
+    const lock3 = new Set([0, 1, 2, 3, 4]);
+    const orig3 = cur.slice();
+    if (prog) prog.bound = 3;
+    moves = await phasedSearch(cur, size, goal3, lock3, orig3, DL, prog);
+    if (!moves) return null;
+    for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+    allMoves.push(...moves);
+
+    // Phase 4: Lock row 0 + col 0, extract 4×4 and IDA*
     const subSize = size - 1;
     const subBoard = [];
     for (let r = 1; r < size; r++)
@@ -224,8 +233,8 @@ const SolverPuzzle15 = (() => {
         valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
 
     const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
-    if (prog) prog.bound = 3;
-    const subMoves = await solveIDA(mapped, subSize);
+    if (prog) prog.bound = 4;
+    const subMoves = await solveIDA(mapped, subSize, prog);
     if (!subMoves) return null;
 
     const vToOv = {};

@@ -424,7 +424,8 @@ async function showHint() {
         const info = document.getElementById('ga-ida-info');
         if (bar) bar.style.width = Math.min(pct, 99) + '%';
         if (info) {
-          const phase = prog.bound <= 1 ? '第1行' : prog.bound <= 2 ? '第1列' : '剩余4×4';
+          const labels = {1:'行①-②', 2:'行③-⑤', 3:'首列', 4:'4×4'};
+          const phase = labels[prog.bound] || `阶段${prog.bound}`;
           if (prog.maxBound > 100) info.textContent = `${phase} · ${(prog.iter/1000).toFixed(0)}k 节点`;
           else info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
         }
@@ -517,7 +518,8 @@ async function startAutoPlay() {
           const info = document.getElementById('ga-ida-info');
           if (bar) bar.style.width = Math.min(pct, 99) + '%';
           if (info) {
-          const phase = prog.bound <= 1 ? '第1行' : prog.bound <= 2 ? '第1列' : '剩余4×4';
+          const labels = {1:'行①-②', 2:'行③-⑤', 3:'首列', 4:'4×4'};
+          const phase = labels[prog.bound] || `阶段${prog.bound}`;
           if (prog.maxBound > 100) info.textContent = `${phase} · ${(prog.iter/1000).toFixed(0)}k 节点`;
           else info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
         }
