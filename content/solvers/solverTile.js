@@ -73,96 +73,100 @@ const SolverTile = (() => {
     return slots;
   }
 
-  // ---- Backtracking solver ----
+  // ---- Greedy solver with shallow backtracking ----
   function solve() {
     const { tiles, byId } = buildGraph();
     if (tiles.length === 0) return null;
 
-    // Count each pattern's total occurrences
-    const totalCounts = {};
-    for (const t of tiles) {
-      totalCounts[t.pattern] = (totalCounts[t.pattern] || 0) + 1;
-    }
-    // Verify each pattern appears in multiples of 3
-    for (const [p, c] of Object.entries(totalCounts)) {
-      if (c % 3 !== 0) {
-        console.warn('[tile] pattern', p, 'count', c, 'not multiple of 3');
-      }
-    }
+    let remaining = new Set(tiles.map(t => t.id));
+    let slot = [];
+    let solution = [];
 
-    const solution = [];
-    const MAX_DEPTH = tiles.length;
-    const stateCache = new Set(); // cache failed states
+    // Cache failed states with limited depth (avoid infinite loops)
+    const failCache = new Set();
 
-    function makeStateKey(remainingIds, slot) {
-      return [...remainingIds].sort().join(',') + '|' + slot.join(',');
+    function stateKey(rem, sl) {
+      return [...rem].sort().join(',') + '|' + sl.sort().join(',');
     }
 
-    function search(remaining, slot, depth) {
-      if (remaining.size === 0 && slot.length === 0) return true; // SOLVED!
-      if (depth > MAX_DEPTH) return false;
-
-      // Check for dead end: slot has >7 unique patterns that can't be matched
-      if (slot.length >= 7) return false;
-
-      const stateKey = makeStateKey(remaining, slot);
-      if (stateCache.has(stateKey)) return false;
-
-      // Find uncovered tiles among remaining
-      const uncovered = [];
-      for (const id of remaining) {
+    function getUncoveredIds(rem) {
+      const unc = [];
+      for (const id of rem) {
         const t = byId[id];
-        // Check if all covering tiles have been removed
-        const stillCovered = t.coveredBy.some(cid => remaining.has(cid));
-        if (!stillCovered) uncovered.push(id);
+        if (!t.coveredBy.some(cid => rem.has(cid))) unc.push(id);
       }
-      if (uncovered.length === 0) { stateCache.add(stateKey); return false; }
+      return unc;
+    }
 
-      // Sort uncovered: prioritize tiles that complete a set of 3
-      const slotCounts = {};
-      for (const p of slot) slotCounts[p] = (slotCounts[p] || 0) + 1;
+    function applySlot(sl, pattern) {
+      const ns = [...sl, pattern];
+      const cnts = {}; for (const p of ns) cnts[p] = (cnts[p] || 0) + 1;
+      return ns.filter(p => { if (cnts[p] >= 3) { cnts[p] -= 3; return false; } return true; });
+    }
 
-      uncovered.sort((a, b) => {
-        const ca = slotCounts[byId[a].pattern] || 0;
-        const cb = slotCounts[byId[b].pattern] || 0;
-        if (ca === 2 && cb !== 2) return -1;
-        if (cb === 2 && ca !== 2) return 1;
-        return (ca || 0) - (cb || 0);
+    // Backtracking helper (limited depth)
+    function backtrack(rem, sl, depth, maxDepth, path) {
+      if (rem.size === 0 && sl.length === 0) return path;
+      if (depth > maxDepth || sl.length >= 7) return null;
+
+      const key = stateKey(rem, sl);
+      if (failCache.has(key)) return null;
+
+      const unc = getUncoveredIds(rem);
+      if (unc.length === 0) { failCache.add(key); return null; }
+
+      // Prioritize: complete 3-set, then 2-of-3, then expose most
+      const slCounts = {}; for (const p of sl) slCounts[p] = (slCounts[p] || 0) + 1;
+      unc.sort((a, b) => {
+        const ca = slCounts[byId[a].pattern] || 0, cb = slCounts[byId[b].pattern] || 0;
+        if (ca >= 2 && cb < 2) return -1;
+        if (cb >= 2 && ca < 2) return 1;
+        if (ca >= 1 && cb < 1) return -1;
+        if (cb >= 1 && ca < 1) return 1;
+        // Prefer tiles that expose more
+        return byId[b].covers.length - byId[a].covers.length;
       });
 
-      for (const id of uncovered) {
-        const t = byId[id];
-        const newRemaining = new Set(remaining);
-        newRemaining.delete(id);
+      for (const id of unc) {
+        const newRem = new Set(rem); newRem.delete(id);
+        const newSlot = applySlot(sl, byId[id].pattern);
+        if (newSlot.length > 7) continue;
+        const result = backtrack(newRem, newSlot, depth + 1, maxDepth, [...path, id]);
+        if (result) return result;
+      }
+      failCache.add(key);
+      return null;
+    }
 
-        const newSlot = [...slot, t.pattern];
-        // Check for 3-match elimination
-        const patternCount = {};
-        for (const p of newSlot) patternCount[p] = (patternCount[p] || 0) + 1;
-        const finalSlot = newSlot.filter(p => {
-          if (patternCount[p] >= 3) { patternCount[p] -= 3; return false; }
-          return true;
-        });
-
-        if (finalSlot.length > 7) continue;
-
-        solution.push(id);
-        if (search(newRemaining, finalSlot, depth + 1)) return true;
-        solution.pop();
+    // Main greedy loop: solve in chunks with backtracking lookahead
+    let step = 0;
+    while (remaining.size > 0 || slot.length > 0) {
+      if (step++ > 1000) return null; // safety
+      if (remaining.size === 0) {
+        // All tiles collected, slot should be empty (all matched)
+        if (slot.length === 0) return solution.map(id => ({ id, pattern: patName(byId[id].pattern) }));
+        return null; // leftover in slot — shouldn't happen
       }
 
-      stateCache.add(stateKey);
-      return false;
+      // Try backtracking with increasing depth
+      let found = false;
+      for (let d = 1; d <= 10; d++) {
+        const path = backtrack(remaining, slot, 0, d, []);
+        if (path) {
+          // Execute the first step of the found path
+          const nextId = path[0];
+          solution.push(nextId);
+          slot = applySlot(slot, byId[nextId].pattern);
+          remaining.delete(nextId);
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) return null; // stuck
     }
 
-    const allIds = new Set(tiles.map(t => t.id));
-    if (search(allIds, [], 0)) {
-      return solution.map(id => ({
-        id,
-        pattern: patName(byId[id].pattern),
-      }));
-    }
-    return null;
+    return solution.map(id => ({ id, pattern: patName(byId[id].pattern) }));
   }
 
   // ---- Simple suggestion (fallback) ----
