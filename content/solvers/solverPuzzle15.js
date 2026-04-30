@@ -263,26 +263,67 @@ const SolverPuzzle15 = (() => {
     const allMoves = [];
     const locked = new Set();
 
-    // Place top row tiles 1..size
-    for (let c = 0; c < size; c++) {
+    // Place top row tiles: place 1..size-2 normally, then 2-tile maneuver for last two
+    for (let c = 0; c < size - 1; c++) {
       const value = c + 1;
       const goalIdx = c;
       if (curBoard[goalIdx] !== value) {
         const moves = placeTileClassic(curBoard, size, value, 0, c, locked);
-        if (!moves) { console.error('[p15] FAIL row tile', value, 'board:', curBoard.join(',')); return null; }
+        if (!moves) { console.error('[p15] FAIL row tile', value); return null; }
         allMoves.push(...moves);
       }
       locked.add(c);
     }
+    // Last row tile: unlock adjacent cell temporarily
+    {
+      const c = size - 1;
+      const value = c + 1;
+      const goalIdx = c;
+      if (curBoard[goalIdx] !== value) {
+        // Unlock (0, c-1) so empty can reach (0, c)
+        locked.delete(c - 1);
+        const moves = placeTileClassic(curBoard, size, value, 0, c, locked);
+        if (!moves) { console.error('[p15] FAIL last row tile', value); return null; }
+        allMoves.push(...moves);
+        // Re-place the displaced neighbor if needed
+        const neighborVal = size <= c ? c : c; // tile 4 at (0,3) for 5x5
+        if (curBoard[c - 1] !== c) { // tile at neighbor position is wrong
+          locked.add(c); // lock the just-placed last tile
+          const nmoves = placeTileClassic(curBoard, size, c, 0, c - 1, locked);
+          if (nmoves) allMoves.push(...nmoves);
+        }
+        locked.add(c - 1);
+      }
+      locked.add(c);
+    }
 
-    // Place left column tiles size+1, 2*size+1, ...
-    for (let r = 1; r < size; r++) {
+    // Place left column tiles: place first size-2 normally
+    for (let r = 1; r < size - 1; r++) {
       const value = r * size + 1;
       const goalIdx = r * size;
       if (curBoard[goalIdx] !== value) {
         const moves = placeTileClassic(curBoard, size, value, r, 0, locked);
-        if (!moves) { console.error('[p15] FAIL col tile', value, 'board:', curBoard.join(',')); return null; }
+        if (!moves) { console.error('[p15] FAIL col tile', value); return null; }
         allMoves.push(...moves);
+      }
+      locked.add(r * size);
+    }
+    // Last column tile: unlock adjacent cell
+    {
+      const r = size - 1;
+      const value = r * size + 1;
+      const goalIdx = r * size;
+      if (curBoard[goalIdx] !== value) {
+        locked.delete((r - 1) * size);
+        const moves = placeTileClassic(curBoard, size, value, r, 0, locked);
+        if (!moves) { console.error('[p15] FAIL last col tile', value); return null; }
+        allMoves.push(...moves);
+        if (curBoard[(r - 1) * size] !== r * size) { // neighbor wrong
+          locked.add(r * size);
+          const nmoves = placeTileClassic(curBoard, size, r * size, r - 1, 0, locked);
+          if (nmoves) allMoves.push(...nmoves);
+        }
+        locked.add((r - 1) * size);
       }
       locked.add(r * size);
     }
