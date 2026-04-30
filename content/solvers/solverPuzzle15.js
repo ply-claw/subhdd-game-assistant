@@ -1,8 +1,8 @@
 'use strict';
 
-// Sliding puzzle solver: reduce-and-conquer for 5×5, IDA* for ≤4×4.
-// 5×5: A* places each tile of top row + left column → lock them.
-// 4×4 (size=4) → IDA* on the remaining unlocked cells.
+// Sliding puzzle solver.
+// ≤4×4: IDA* directly.
+// 5×5: classic row-by-column reduction — move empty next to tile, push toward goal.
 
 const SolverPuzzle15 = (() => {
 
@@ -51,72 +51,183 @@ const SolverPuzzle15 = (() => {
     for (const [dr,dc] of dirs) {
       const nr=r+dr, nc=c+dc; if (nr<0||nr>=size||nc<0||nc>=size) continue;
       const ni=nr*size+nc;
-      if (locked && locked.has(ni)) continue; // can't swap with locked tile
+      if (locked && locked.has(ni)) continue;
       const nb=board.slice();
       [nb[z],nb[ni]]=[nb[ni],nb[z]]; n.push({board:nb,tile:board[ni]});
     }
     return n;
   }
 
-  // ---- A* for placing a single tile ----
-  class MinHeap {
-    constructor() { this.d = []; }
-    push(v) { this.d.push(v); let i=this.d.length-1; while(i>0){const p=(i-1)>>1; if(this.d[p].f<=this.d[i].f)break;[this.d[p],this.d[i]]=[this.d[i],this.d[p]];i=p;} }
-    pop() { if(this.d.length<=1)return this.d.pop()||null; const t=this.d[0]; this.d[0]=this.d.pop(); let i=0; while(1){let s=i,l=i*2+1,r=i*2+2; if(l<this.d.length&&this.d[l].f<this.d[s].f)s=l; if(r<this.d.length&&this.d[r].f<this.d[s].f)s=r; if(s===i)break;[this.d[i],this.d[s]]=[this.d[s],this.d[i]];i=s;} return t; }
-    get size() { return this.d.length; }
-  }
+  // ---- Classic tile placement: move empty next to tile, push toward goal ----
+  function getEmptyPath(board, size, targetR, targetC, locked) {
+    // BFS to find shortest path for EMPTY to reach (targetR, targetC)
+    // State is just empty position. Locked tiles are obstacles.
+    const startZ = board.indexOf(0);
+    const startKey = String(startZ);
+    const goalKey = String(targetR*size+targetC);
+    if (startKey === goalKey) return [];
 
-  function tileDistance(board, value, tr, tc) {
-    const idx = board.indexOf(value);
-    if (idx < 0) return 999;
-    return Math.abs(Math.floor(idx / Math.round(Math.sqrt(board.length))) - tr) +
-           Math.abs((idx % Math.round(Math.sqrt(board.length))) - tc);
-  }
+    const queue = [{ pos: startZ, path: [] }];
+    const visited = new Set([startKey]);
+    let head = 0;
 
-  async function placeTile(board, size, value, tr, tc, locked, deadline) {
-    const goalIdx = tr*size+tc;
-    if (board[goalIdx] === value) return [];
-
-    const startKey = boardToKey(board);
-    // Focused heuristic: just the target tile's distance to goal
-    const startH = tileDistance(board, value, tr, tc);
-    const heap = new MinHeap();
-    heap.push({ board, g: 0, f: startH, path: [] });
-    const bestG = new Map([[startKey, 0]]);
-    const MAX = 200000;
-
-    for (let iter = 0; heap.size > 0 && iter < MAX; iter++) {
-      if (iter % 2000 === 0) {
-        if (Date.now() > deadline) return null;
-        await new Promise(r => setTimeout(r, 0));
-      }
-      const cur = heap.pop();
-      if (!cur) return null;
-      if (cur.board[goalIdx] === value) return cur.path;
-
-      const neighbors = getNeighbors(cur.board, size, locked);
-      for (const nb of neighbors) {
-        const newG = cur.g + 1;
-        const key = boardToKey(nb.board);
-        if (bestG.has(key) && bestG.get(key) <= newG) continue;
-        bestG.set(key, newG);
-        const h = tileDistance(nb.board, value, tr, tc);
-        heap.push({ board: nb.board, g: newG, f: newG + h, path: [...cur.path, { tile: nb.tile }] });
+    while (head < queue.length) {
+      const cur = queue[head++];
+      const r = Math.floor(cur.pos / size), c = cur.pos % size;
+      const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+      for (const [dr, dc] of dirs) {
+        const nr = r+dr, nc = c+dc;
+        if (nr<0||nr>=size||nc<0||nc>=size) continue;
+        const ni = nr*size+nc;
+        if (locked && locked.has(ni)) continue; // can't go through locked cells
+        const key = String(ni);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        const newPath = [...cur.path, ni];
+        if (key === goalKey) return newPath; // sequence of positions for empty
+        queue.push({ pos: ni, path: newPath });
       }
     }
-    return null;
+    return null; // no path
   }
 
-  // ---- IDA* for ≤4×4 (async) ----
+  // Execute a sequence of empty moves on the board, returning the tile moved at each step
+  function executeEmptyPath(board, size, path, locked) {
+    const moves = [];
+    for (const nextZ of path) {
+      const curZ = board.indexOf(0);
+      if (locked && locked.has(nextZ)) {
+        // This shouldn't happen because we filter in BFS
+        return null;
+      }
+      const tile = board[nextZ];
+      [board[curZ], board[nextZ]] = [board[nextZ], board[curZ]];
+      moves.push({ tile });
+    }
+    return moves;
+  }
+
+  function placeTileClassic(board, size, value, tr, tc, locked) {
+    const allMoves = [];
+    const goalIdx = tr*size+tc;
+    const MAX_STEPS = 5000;
+
+    for (let step = 0; step < MAX_STEPS; step++) {
+      if (board[goalIdx] === value) return allMoves;
+
+      const tileIdx = board.indexOf(value);
+      if (tileIdx < 0) return null;
+      const tileR = Math.floor(tileIdx / size), tileC = tileIdx % size;
+
+      // Determine push direction: which way to push the tile toward goal
+      let pushDR = 0, pushDC = 0;
+      if (tileR < tr) pushDR = 1;  // need to push tile DOWN
+      else if (tileR > tr) pushDR = -1; // push UP
+      else if (tileC < tc) pushDC = 1;  // push RIGHT
+      else if (tileC > tc) pushDC = -1; // push LEFT
+
+      // The empty must be at (tileR + pushDR, tileC + pushDC) to push the tile
+      const emptyTargetR = tileR + pushDR;
+      const emptyTargetC = tileC + pushDC;
+
+      if (emptyTargetR < 0 || emptyTargetR >= size || emptyTargetC < 0 || emptyTargetC >= size) {
+        // Edge case: tile at edge but needs to go further — push perpendicular first
+        // Try pushing in the perpendicular direction
+        if (pushDR !== 0) {
+          // Pushing vertically, try horizontal
+          if (tileC > 0 && !(locked && locked.has(tileR*size + tileC - 1))) {
+            pushDR = 0; pushDC = -1;
+          } else if (tileC < size-1 && !(locked && locked.has(tileR*size + tileC + 1))) {
+            pushDR = 0; pushDC = 1;
+          }
+        } else {
+          if (tileR > 0 && !(locked && locked.has((tileR-1)*size + tileC))) {
+            pushDC = 0; pushDR = -1;
+          } else if (tileR < size-1 && !(locked && locked.has((tileR+1)*size + tileC))) {
+            pushDC = 0; pushDR = 1;
+          }
+        }
+      }
+
+      const etR = tileR + pushDR;
+      const etC = tileC + pushDC;
+
+      // If push target is out of bounds or locked, we need a different approach
+      if (etR < 0 || etR >= size || etC < 0 || etC >= size || (locked && locked.has(etR*size+etC))) {
+        // Try all 4 directions for a valid push
+        const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+        let found = false;
+        for (const [dr, dc] of dirs) {
+          const nr = tileR+dr, nc = tileC+dc;
+          if (nr>=0 && nr<size && nc>=0 && nc<size && !(locked && locked.has(nr*size+nc))) {
+            // Move empty to this position and push
+            const path = getEmptyPath(board, size, nr, nc, locked);
+            if (path) {
+              const moves = executeEmptyPath(board, size, path, locked);
+              if (moves) allMoves.push(...moves);
+              // Now swap empty with tile to push it
+              const curZ = board.indexOf(0);
+              const pushIdx = nr*size+nc;
+              if (curZ === pushIdx) {
+                [board[curZ], board[tileIdx]] = [board[tileIdx], board[curZ]];
+                allMoves.push({ tile: value });
+              }
+              found = true;
+              break;
+            }
+          }
+        }
+        if (!found) return null; // stuck
+      } else {
+        // Move empty to push position, then push tile
+        const path = getEmptyPath(board, size, etR, etC, locked);
+        if (!path) {
+          // Can't reach the push position directly. Try an alternative approach:
+          // Move the tile away from the edge first
+          const altPath = getEmptyPath(board, size, tileR, tileC, locked);
+          if (altPath) {
+            const moves = executeEmptyPath(board, size, altPath, locked);
+            if (moves) allMoves.push(...moves);
+            // Move tile one step away from edge
+            const pushAwayR = tileR + (tileR === 0 ? 1 : tileR === size-1 ? -1 : 0);
+            const pushAwayC = tileC + (tileC === 0 ? 1 : tileC === size-1 ? -1 : 0);
+            if (pushAwayR !== tileR || pushAwayC !== tileC) {
+              const curZ = board.indexOf(0);
+              const awayIdx = pushAwayR*size + pushAwayC;
+              if (curZ === tileIdx) {
+                [board[curZ], board[awayIdx]] = [board[awayIdx], board[curZ]];
+                allMoves.push({ tile: board[awayIdx] });
+              }
+            }
+            continue;
+          }
+          return null;
+        }
+        const moves = executeEmptyPath(board, size, path, locked);
+        if (!moves) return null;
+        allMoves.push(...moves);
+
+        // Now empty is at push position — push the tile
+        const curZ = board.indexOf(0);
+        const pushIdx = etR*size+etC;
+        if (curZ === pushIdx && board[tileIdx] === value) {
+          [board[curZ], board[tileIdx]] = [board[tileIdx], board[curZ]];
+          allMoves.push({ tile: value });
+        }
+      }
+    }
+    return null; // hit max steps
+  }
+
+  // ---- IDA* for ≤4×4 ----
   async function idaSearch(board, size, g, bound, path, visited, bestNextBound, iterCounter, deadline, locked) {
     iterCounter.val++;
     if (iterCounter.val % 2000 === 0) {
       if (Date.now() > deadline) throw new Error('timeout');
       await new Promise(r => setTimeout(r, 0));
     }
-    const f = g + (locked ? heuristic(board, size) : heuristic(board, size));
+    const f = g + heuristic(board, size);
     if (f > bound) { bestNextBound.val = Math.min(bestNextBound.val, f); return null; }
-    // Check goal: tiles at correct positions
     let done = true;
     for (let i = 0; i < size*size; i++) {
       const expected = i < size*size-1 ? i+1 : 0;
@@ -138,8 +249,7 @@ const SolverPuzzle15 = (() => {
     return null;
   }
 
-  async function solveIDA(board, size, locked) {
-    // Check if already solved
+  async function solveIDA(board, size) {
     let done = true;
     for (let i = 0; i < size*size; i++) {
       const expected = i < size*size-1 ? i+1 : 0;
@@ -156,7 +266,7 @@ const SolverPuzzle15 = (() => {
         if (Date.now() > DEADLINE) return null;
         const visited = new Map();
         const nxt = {val:Infinity};
-        const r = await idaSearch(board, size, 0, bound, [], visited, nxt, iter, DEADLINE, locked || null);
+        const r = await idaSearch(board, size, 0, bound, [], visited, nxt, iter, DEADLINE, null);
         if (r) return r;
         if (nxt.val===Infinity) return null;
         bound = Math.max(bound+1, nxt.val);
@@ -168,53 +278,44 @@ const SolverPuzzle15 = (() => {
 
   // ---- Main solve ----
   async function solve(board, size) {
-    // 3×3 and 4×4: IDA* directly
-    if (size <= 4) {
-      return await solveIDA(board, size);
-    }
+    if (size <= 4) return await solveIDA(board, size);
 
-    // 5×5: reduce-and-conquer
+    // 5×5: classic row+column reduction
     let curBoard = board.slice();
     const allMoves = [];
     const locked = new Set();
-    const DEADLINE = Date.now() + 120000;
 
-    // Place ALL top row tiles 1..5
+    // Place top row tiles 1..size
     for (let c = 0; c < size; c++) {
-      if (Date.now() > DEADLINE) return null;
       const value = c + 1;
-      const path = await placeTile(curBoard, size, value, 0, c, locked, DEADLINE);
-      if (!path) return null;
-      for (const step of path) {
-        const z = curBoard.indexOf(0), ti = curBoard.indexOf(step.tile);
-        [curBoard[z], curBoard[ti]] = [curBoard[ti], curBoard[z]];
-        allMoves.push(step);
+      const goalIdx = c;
+      if (curBoard[goalIdx] !== value) {
+        const moves = placeTileClassic(curBoard, size, value, 0, c, locked);
+        if (!moves) return null;
+        allMoves.push(...moves);
       }
       locked.add(c);
     }
 
-    // Place ALL left column tiles (size+1), (2*size+1), ...
+    // Place left column tiles size+1, 2*size+1, ...
     for (let r = 1; r < size; r++) {
-      if (Date.now() > DEADLINE) return null;
       const value = r * size + 1;
-      const path = await placeTile(curBoard, size, value, r, 0, locked, DEADLINE);
-      if (!path) return null;
-      for (const step of path) {
-        const z = curBoard.indexOf(0), ti = curBoard.indexOf(step.tile);
-        [curBoard[z], curBoard[ti]] = [curBoard[ti], curBoard[z]];
-        allMoves.push(step);
+      const goalIdx = r * size;
+      if (curBoard[goalIdx] !== value) {
+        const moves = placeTileClassic(curBoard, size, value, r, 0, locked);
+        if (!moves) return null;
+        allMoves.push(...moves);
       }
       locked.add(r * size);
     }
 
-    // Remaining 4×4 sub-puzzle: solve with IDA*
+    // Extract and solve 4×4 sub-puzzle
     const subSize = size - 1;
     const subBoard = [];
     for (let r = 1; r < size; r++)
       for (let c = 1; c < size; c++)
         subBoard.push(curBoard[r*size + c]);
 
-    // Remap sub-board values: original value → 1..subSize²
     const valMap = {0: 0};
     for (let r = 1; r < size; r++)
       for (let c = 1; c < size; c++) {
@@ -227,7 +328,6 @@ const SolverPuzzle15 = (() => {
     const subMoves = await solveIDA(mapped, subSize);
     if (!subMoves) return null;
 
-    // Map back
     const vToOv = {};
     for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
     for (const sm of subMoves) {
