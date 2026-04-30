@@ -204,7 +204,7 @@ function readTileState() {
 // Tile action: click a specific tile
 function actClickTile(tileId) {
   const el = document.querySelector(`#tile-stage [data-id="${tileId}"]`);
-  if (el && SolverTile.isTileClickable(el)) el.click();
+  if (el) el.click();
 }
 
 function actFlip(index) {
