@@ -12,8 +12,6 @@ const SolverTile = (() => {
       const id = el.dataset.id;
       const pattern = el.dataset.pattern;
       const layer = parseInt(el.dataset.layer) || 0;
-      // Check if this tile is covered by another tile
-      if (!isTileClickable(el)) return;
       tiles.push({ id, pattern, layer, el });
     });
     return tiles;
