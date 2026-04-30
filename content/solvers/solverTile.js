@@ -94,8 +94,7 @@ const SolverTile = (() => {
       const unc = [];
       for (const id of rem) {
         const t = byId[id];
-        // Re-read is-covered from live DOM
-        if (t.el && t.el.classList.contains('is-covered')) continue;
+        // Use only graph-based coverage (works in simulation — no DOM dependency)
         if (t.coveredBy.some(cid => rem.has(cid))) continue;
         unc.push(id);
       }
@@ -121,12 +120,11 @@ const SolverTile = (() => {
     function search(remaining, slot, depth) {
       if (remaining.size === 0 && slot.length === 0) return true;
       if (slot.length >= 7) return false;
-
-      const h = hashState(remaining, slot);
-      if (failCache.has(h)) return false;
+      // Early prune: if remaining tiles can't possibly fill 3-matches, fail
+      if (remaining.size + slot.length > 1000) return false; // safety
 
       const unc = getUncoveredIds(remaining);
-      if (unc.length === 0) { failCache.add(h); return false; }
+      if (unc.length === 0) return false;
 
       // Log depth progress intermittently
       if (depth % 5 === 0 || depth <= 3) {
@@ -162,7 +160,6 @@ const SolverTile = (() => {
         console.warn('[tile] all branches blocked at depth', depth, 'slot:', slot, 'unc:', unc.length);
       }
 
-      failCache.add(h);
       return false;
     }
 

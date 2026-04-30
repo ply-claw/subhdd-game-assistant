@@ -670,29 +670,33 @@ async function startAutoPlay() {
         break;
       }
       case 'tile': {
-        // One-shot solve
-        Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
-        await new Promise(r => setTimeout(r, 50));
-        const t0 = Date.now();
-        const solution = SolverTile.solve();
-        const secs = ((Date.now() - t0) / 1000).toFixed(1);
-        if (!solution) { Panel.showHint(`无解 (${secs}s)`); Panel.setStatus('无解', 'loss'); break; }
-        Panel.showHint(`${secs}s · ${solution.length} 步`);
-
-        // Execute
-        for (let i = 0; i < solution.length; i++) {
-          if (autoPlayStoppedFlag) break;
+        let failed = [];
+        while (!autoPlayStoppedFlag) {
+          await delay(300, 600);
           const st = document.getElementById('page-status');
-          if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
-          const step = solution[i];
-          const prevR = document.getElementById('remaining-count')?.textContent;
-          Panel.showHint(`[${i+1}/${solution.length}] #${step.id} ${step.pattern}`);
-          actClickTile(step.id);
+          if (st?.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
+          if (st?.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
+
+          let sug = SolverTile.suggestNext();
+          if (sug && failed.includes(sug.tile.id)) sug = null;
+          if (!sug) {
+            const all = SolverTile.getUncoveredTiles().filter(t => !failed.includes(t.id));
+            if (all.length === 0) { failed = []; continue; }
+            sug = { tile: all[0], reason: '备选' };
+          }
+
+          const prev = document.getElementById('remaining-count')?.textContent;
+          Panel.showHint(`#${sug.tile.id} ${sug.tile.pattern} (${sug.reason})`);
+          actClickTile(sug.tile.id);
+
+          let ok = false;
           for (let w = 0; w < 30; w++) {
             await delay(100, 150);
-            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
-            if (document.getElementById('remaining-count')?.textContent !== prevR) break;
+            const st2 = document.getElementById('page-status');
+            if (st2?.classList.contains('is-win') || st2?.classList.contains('is-loss')) { ok = true; break; }
+            if (document.getElementById('remaining-count')?.textContent !== prev) { ok = true; break; }
           }
+          if (!ok) { failed.push(sug.tile.id); if (failed.length > 10) failed.shift(); }
         }
         break;
       }
