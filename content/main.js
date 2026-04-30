@@ -670,43 +670,28 @@ async function startAutoPlay() {
         break;
       }
       case 'tile': {
-        let failedTiles = [];
-        while (!autoPlayStoppedFlag) {
-          await delay(300, 600);
+        // One-shot solve
+        Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
+        await new Promise(r => setTimeout(r, 50));
+        const t0 = Date.now();
+        const solution = SolverTile.solve();
+        const secs = ((Date.now() - t0) / 1000).toFixed(1);
+        if (!solution) { Panel.showHint(`无解 (${secs}s)`); Panel.setStatus('无解', 'loss'); break; }
+        Panel.showHint(`${secs}s · ${solution.length} 步`);
+
+        // Execute
+        for (let i = 0; i < solution.length; i++) {
+          if (autoPlayStoppedFlag) break;
           const st = document.getElementById('page-status');
-          if (st && st.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
-          if (st && st.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
-
-          let sug = SolverTile.suggestNext();
-          // Filter out recently failed tiles
-          if (sug && failedTiles.includes(sug.tile.id)) sug = null;
-          if (!sug) {
-            // Try any uncovered tile not in failed list
-            const all = SolverTile.getUncoveredTiles().filter(t => !failedTiles.includes(t.id));
-            if (all.length === 0) { Panel.setStatus('无可用方块', 'loss'); break; }
-            sug = { tile: all[0], reason: '备选' };
-          }
-
-          const prevRemaining = document.getElementById('remaining-count')?.textContent;
-          const prevSlot = document.getElementById('slot-count')?.textContent;
-          Panel.showHint(`#${sug.tile.id} ${sug.tile.pattern} (${sug.reason})`);
-          actClickTile(sug.tile.id);
-
-          // Wait for server
-          let changed = false;
-          for (let w = 0; w < 25; w++) {
+          if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
+          const step = solution[i];
+          const prevR = document.getElementById('remaining-count')?.textContent;
+          Panel.showHint(`[${i+1}/${solution.length}] #${step.id} ${step.pattern}`);
+          actClickTile(step.id);
+          for (let w = 0; w < 30; w++) {
             await delay(100, 150);
-            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) { changed = true; break; }
-            const cr = document.getElementById('remaining-count')?.textContent;
-            const cs = document.getElementById('slot-count')?.textContent;
-            if (cr !== prevRemaining || cs !== prevSlot) { changed = true; break; }
-          }
-          if (!changed) {
-            failedTiles.push(sug.tile.id);
-            if (failedTiles.length > 5) failedTiles.shift(); // keep only recent
-            Panel.showHint(`#${sug.tile.id} 无响应，跳过`);
-          } else {
-            failedTiles = []; // clear on success
+            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+            if (document.getElementById('remaining-count')?.textContent !== prevR) break;
           }
         }
         break;
