@@ -186,30 +186,39 @@ const SolverPuzzle15 = (() => {
   async function solve(board, size, prog) {
     if (size <= 4) return await solveIDA(board, size, prog);
 
-    // 5×5: 3-phase search
-    const DL = Date.now() + 300000;
+    // 5×5: tile-by-tile placement for row + column, then IDA* on 4×4
+    const DL = Date.now() + 600000;
     let cur = board.slice();
     const allMoves = [];
-    if (prog) { prog.maxBound = 3; prog.bound = 0; }
+    const locked = new Set();
+    if (prog) { prog.maxBound = size * 2; prog.bound = 0; }
 
-    // Phase 1: Solve first row (tiles 1..5 at positions 0..4)
-    const rowGoal = new Set([0, 1, 2, 3, 4]);
-    const noLock = new Set();
-    if (prog) prog.bound = 1;
-    let moves = await phasedSearch(cur, size, rowGoal, noLock, cur, DL, prog, 'row');
-    if (!moves) return null;
-    for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
-    allMoves.push(...moves);
+    // Place each tile of the first row individually
+    for (let c = 0; c < size; c++) {
+      const goalIdx = c;
+      if (cur[goalIdx] === c + 1) { locked.add(goalIdx); continue; }
+      if (prog) prog.bound = c + 1;
+      const original = cur.slice();
+      const moves = await phasedSearch(cur, size, new Set([goalIdx]), locked, original, DL, prog);
+      if (!moves) return null;
+      for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+      allMoves.push(...moves);
+      locked.add(goalIdx);
+    }
 
-    // Phase 2: Lock row 0, solve first column (tiles at positions 5,10,15,20)
-    const colGoal = new Set([5, 10, 15, 20]);
-    const rowLock = new Set([0, 1, 2, 3, 4]);
-    const original2 = cur.slice();
-    if (prog) prog.bound = 2;
-    moves = await phasedSearch(cur, size, colGoal, rowLock, original2, DL, prog, 'col');
-    if (!moves) return null;
-    for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
-    allMoves.push(...moves);
+    // Place each tile of the first column individually (row 0 already locked)
+    for (let r = 1; r < size; r++) {
+      const goalIdx = r * size;
+      const value = r * size + 1;
+      if (cur[goalIdx] === value) { locked.add(goalIdx); continue; }
+      if (prog) prog.bound = size + r;
+      const original = cur.slice();
+      const moves = await phasedSearch(cur, size, new Set([goalIdx]), locked, original, DL, prog);
+      if (!moves) return null;
+      for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+      allMoves.push(...moves);
+      locked.add(goalIdx);
+    }
 
     // Phase 3: Lock row 0 + col 0, extract 4×4 and IDA*
     const subSize = size - 1;
