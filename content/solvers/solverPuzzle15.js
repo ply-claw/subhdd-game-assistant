@@ -66,57 +66,6 @@ const SolverPuzzle15 = (() => {
     get size() { return this.d.length; }
   }
 
-  // ---- A* for single tile placement ----
-  // Goal: tile 'value' at (tr, tc), all locked cells unchanged from 'original'.
-  async function aStarPlaceTile(board, size, value, tr, tc, locked, original, deadline) {
-    const goalIdx = tr*size+tc;
-    if (board[goalIdx] === value) return [];
-
-    const startKey = boardToKey(board);
-    // Heuristic: just the target tile's manhattan distance
-    function h(b) {
-      const idx = b.indexOf(value);
-      if (idx < 0) return 999;
-      return Math.abs(Math.floor(idx/size)-tr) + Math.abs((idx%size)-tc);
-    }
-
-    const heap = new Heap();
-    heap.push({ board, g: 0, f: h(board), path: [] });
-    const bestG = new Map([[startKey, 0]]);
-    const MAX = 200000;
-    let iter = 0;
-
-    while (heap.size > 0 && iter < MAX) {
-      iter++;
-      if (iter % 3000 === 0) {
-        if (Date.now() > deadline) return null;
-        await new Promise(r => setTimeout(r, 0));
-      }
-
-      const cur = heap.pop();
-      if (!cur) return null;
-
-      // Check goal: tile at target AND locked cells intact
-      if (cur.board[goalIdx] === value) {
-        let ok = true;
-        for (const idx of locked) {
-          if (cur.board[idx] !== original[idx]) { ok = false; break; }
-        }
-        if (ok) return cur.path;
-      }
-
-      const neighbors = getNeighbors(cur.board, size, locked);
-      for (const nb of neighbors) {
-        const newG = cur.g + 1;
-        const key = boardToKey(nb.board);
-        if (bestG.has(key) && bestG.get(key) <= newG) continue;
-        bestG.set(key, newG);
-        heap.push({ board: nb.board, g: newG, f: newG + h(nb.board), path: [...cur.path, { tile: nb.tile }] });
-      }
-    }
-    return null;
-  }
-
   // ---- IDA* for ≤4×4 ----
   async function idaSearch(board, size, g, bound, path, visited, iter, deadline, prog) {
     iter.val++;
@@ -174,17 +123,40 @@ const SolverPuzzle15 = (() => {
   }
 
   // ---- Main solve ----
-  // Greedy best-first for 5×5 (finds any solution, not optimal)
-  async function greedySolve(board, size, prog, deadline) {
-    const goal = Array.from({length:size*size}, (_,i) => i<size*size-1?i+1:0);
-    const goalKey = boardToKey(goal);
-    if (boardToKey(board) === goalKey) return [];
+  // Phased search: find state where specific tiles are at correct positions.
+  // goalIndices: Set of indices that must have correct values.
+  // locked: Set of indices that must NOT change from 'original'.
+  // weighted A* (w=2) for speed over optimality.
+  async function phasedSearch(board, size, goalSet, locked, original, deadline, prog, label) {
+    // Heuristic: sum of Manhattan distances for tiles in goalSet
+    function h(b) {
+      let d = 0;
+      for (const idx of goalSet) {
+        const v = idx + 1; // correct value at this index
+        const pos = b.indexOf(v);
+        if (pos < 0) d += 999;
+        else d += Math.abs(Math.floor(pos/size) - Math.floor(idx/size)) + Math.abs((pos%size) - (idx%size));
+      }
+      // Penalize disturbed locked cells
+      for (const idx of locked) {
+        if (b[idx] !== original[idx]) d += 1000;
+      }
+      return d;
+    }
 
+    function goalCheck(b) {
+      for (const idx of goalSet) if (b[idx] !== idx + 1) return false;
+      for (const idx of locked) if (b[idx] !== original[idx]) return false;
+      return true;
+    }
+
+    if (goalCheck(board)) return [];
+    const startKey = boardToKey(board);
     const heap = new Heap();
-    heap.push({ board, h: heuristic(board, size), path: [] });
-    const visited = new Set([boardToKey(board)]);
+    heap.push({ board, g: 0, f: h(board) * 2, path: [] }); // w=2 weighted A*
+    const bestG = new Map([[startKey, 0]]);
     let iter = 0;
-    const MAX = 5000000; // 5M nodes max
+    const MAX = 2000000;
 
     if (prog) { prog.maxBound = MAX; prog.iter = 0; }
 
@@ -195,17 +167,17 @@ const SolverPuzzle15 = (() => {
         if (prog) prog.iter = iter;
         await new Promise(r => setTimeout(r, 0));
       }
-
       const cur = heap.pop();
       if (!cur) return null;
-      if (boardToKey(cur.board) === goalKey) return cur.path;
+      if (goalCheck(cur.board)) return cur.path;
 
-      const neighbors = getNeighbors(cur.board, size, null);
-      for (const nb of neighbors) {
+      const ns = getNeighbors(cur.board, size, locked);
+      for (const nb of ns) {
+        const newG = cur.g + 1;
         const key = boardToKey(nb.board);
-        if (visited.has(key)) continue;
-        visited.add(key);
-        heap.push({ board: nb.board, h: heuristic(nb.board, size), path: [...cur.path, { tile: nb.tile }] });
+        if (bestG.has(key) && bestG.get(key) <= newG) continue;
+        bestG.set(key, newG);
+        heap.push({ board: nb.board, g: newG, f: newG + h(nb.board) * 2, path: [...cur.path, { tile: nb.tile }] });
       }
     }
     return null;
@@ -214,10 +186,57 @@ const SolverPuzzle15 = (() => {
   async function solve(board, size, prog) {
     if (size <= 4) return await solveIDA(board, size, prog);
 
-    // 5×5: greedy best-first (IDA* too slow for 25-puzzle)
+    // 5×5: 3-phase search
     const DL = Date.now() + 300000;
-    if (prog) { prog.maxBound = 5000000; prog.bound = 0; prog.iter = 0; }
-    return await greedySolve(board, size, prog, DL);
+    let cur = board.slice();
+    const allMoves = [];
+    if (prog) { prog.maxBound = 3; prog.bound = 0; }
+
+    // Phase 1: Solve first row (tiles 1..5 at positions 0..4)
+    const rowGoal = new Set([0, 1, 2, 3, 4]);
+    const noLock = new Set();
+    if (prog) prog.bound = 1;
+    let moves = await phasedSearch(cur, size, rowGoal, noLock, cur, DL, prog, 'row');
+    if (!moves) return null;
+    for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+    allMoves.push(...moves);
+
+    // Phase 2: Lock row 0, solve first column (tiles at positions 5,10,15,20)
+    const colGoal = new Set([5, 10, 15, 20]);
+    const rowLock = new Set([0, 1, 2, 3, 4]);
+    const original2 = cur.slice();
+    if (prog) prog.bound = 2;
+    moves = await phasedSearch(cur, size, colGoal, rowLock, original2, DL, prog, 'col');
+    if (!moves) return null;
+    for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+    allMoves.push(...moves);
+
+    // Phase 3: Lock row 0 + col 0, extract 4×4 and IDA*
+    const subSize = size - 1;
+    const subBoard = [];
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        subBoard.push(cur[r*size + c]);
+
+    const valMap = {0: 0};
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
+
+    const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
+    if (prog) prog.bound = 3;
+    const subMoves = await solveIDA(mapped, subSize);
+    if (!subMoves) return null;
+
+    const vToOv = {};
+    for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
+    for (const sm of subMoves) {
+      const ot = vToOv[sm.tile];
+      if (ot === undefined) return null;
+      allMoves.push({ tile: ot });
+    }
+
+    return allMoves;
   }
 
   return { solve };
