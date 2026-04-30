@@ -83,8 +83,14 @@ const SolverPuzzle15 = (() => {
     return neighbors;
   }
 
-  // IDA* depth-limited DFS
-  function idaSearch(board, size, g, bound, path, visited, bestNextBound) {
+  // IDA* depth-limited DFS with periodic yielding
+  async function idaSearch(board, size, g, bound, path, visited, bestNextBound, iterCounter) {
+    // Yield to event loop every ~5000 iterations to prevent "page unresponsive"
+    iterCounter.val++;
+    if (iterCounter.val % 5000 === 0) {
+      await new Promise(r => setTimeout(r, 0));
+    }
+
     const f = g + heuristic(board, size);
     if (f > bound) { bestNextBound.val = Math.min(bestNextBound.val, f); return null; }
     if (board.every((v, i) => v === (i < size * size - 1 ? i + 1 : 0))) return path;
@@ -94,31 +100,33 @@ const SolverPuzzle15 = (() => {
     visited.set(key, g);
 
     const neighbors = getNeighbors(board, size);
-    // Sort by heuristic to explore most promising first
     neighbors.sort((a, b) => heuristic(a.board, size) - heuristic(b.board, size));
 
     for (const nb of neighbors) {
-      const result = idaSearch(nb.board, size, g + 1, bound,
-        [...path, { tile: nb.tile }], visited, bestNextBound);
+      const result = await idaSearch(nb.board, size, g + 1, bound,
+        [...path, { tile: nb.tile }], visited, bestNextBound, iterCounter);
       if (result) return result;
     }
     return null;
   }
 
-  function solve(board, size) {
+  async function solve(board, size) {
     const goal = getGoal(size);
     if (board.every((v, i) => v === goal[i])) return [];
 
     let bound = heuristic(board, size);
     const MAX_BOUND = size <= 3 ? 30 : size === 4 ? 80 : 200;
+    const iterCounter = { val: 0 };
 
     while (bound <= MAX_BOUND) {
       const visited = new Map();
       const bestNextBound = { val: Infinity };
-      const result = idaSearch(board, size, 0, bound, [], visited, bestNextBound);
+      const result = await idaSearch(board, size, 0, bound, [], visited, bestNextBound, iterCounter);
       if (result) return result;
       if (bestNextBound.val === Infinity) return null;
       bound = Math.max(bound + 1, bestNextBound.val);
+      // Yield between bound iterations too
+      await new Promise(r => setTimeout(r, 0));
     }
     return null;
   }
