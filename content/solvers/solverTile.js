@@ -1,7 +1,7 @@
 'use strict';
 
-// Tile (羊了个羊) solver — precompute complete solution via backtracking.
-// Since ALL tiles are known upfront, we can find the exact winning sequence.
+// Tile (羊了个羊) solver — precompute complete greedy solution.
+// Since ALL tiles are known upfront, we can plan the full sequence.
 
 const SolverTile = (() => {
 
@@ -19,10 +19,8 @@ const SolverTile = (() => {
       tiles.push({
         id: el.dataset.id,
         pattern: el.dataset.pattern,
-        layer: parseInt(el.dataset.layer) || 0,
         z: parseInt(getComputedStyle(el).zIndex) || 0,
         rect: { l: r.left, r: r.right, t: r.top, b: r.bottom },
-        el,
       });
     });
     return tiles;
@@ -34,7 +32,6 @@ const SolverTile = (() => {
            a.rect.t < b.rect.b && a.rect.b > b.rect.t;
   }
 
-  // ---- Build tile graph with cover relationships ----
   function buildGraph() {
     const tiles = getAllTiles();
     const byId = {};
@@ -55,16 +52,9 @@ const SolverTile = (() => {
     return { tiles, byId };
   }
 
-  function getUncovered(tiles) {
-    return tiles.filter(t => t.coveredBy.length === 0);
-  }
-
-  // For display only
   function getUncoveredTiles() {
-    return getUncovered(getAllTiles().map(t => {
-      t.covers = []; t.coveredBy = [];
-      return t;
-    }));
+    const { tiles } = buildGraph();
+    return tiles.filter(t => !tiles.some(o => covers(o, t)));
   }
 
   function getSlotContents() {
@@ -73,26 +63,16 @@ const SolverTile = (() => {
     return slots;
   }
 
-  // ---- Greedy solver with shallow backtracking ----
+  // ---- Greedy full-sequence solver ----
   function solve() {
     const { tiles, byId } = buildGraph();
-    console.log('[tile] buildGraph:', tiles.length, 'tiles, byId keys:', Object.keys(byId).length);
-    if (tiles.length === 0) { console.error('[tile] NO TILES — is the game started?'); return null; }
-    // Check first few tiles
-    console.log('[tile] first tile:', JSON.stringify({ id: tiles[0]?.id, pattern: tiles[0]?.pattern, covers: tiles[0]?.covers?.length, coveredBy: tiles[0]?.coveredBy?.length }));
-    const uncovered = getUncovered(tiles);
-    console.log('[tile] uncovered count:', uncovered.length);
+    if (tiles.length === 0) return null;
 
     let remaining = new Set(tiles.map(t => t.id));
     let slot = [];
     let solution = [];
-
-    // Cache failed states with limited depth (avoid infinite loops)
-    const failCache = new Set();
-
-    function stateKey(rem, sl) {
-      return [...rem].sort().join(',') + '|' + sl.sort().join(',');
-    }
+    let step = 0;
+    const MAX = tiles.length * 2;
 
     function getUncoveredIds(rem) {
       const unc = [];
@@ -105,121 +85,97 @@ const SolverTile = (() => {
 
     function applySlot(sl, pattern) {
       const ns = [...sl, pattern];
-      const cnts = {}; for (const p of ns) cnts[p] = (cnts[p] || 0) + 1;
-      return ns.filter(p => { if (cnts[p] >= 3) { cnts[p] -= 3; return false; } return true; });
+      const cnts = {};
+      for (const p of ns) cnts[p] = (cnts[p] || 0) + 1;
+      return ns.filter(p => {
+        if (cnts[p] >= 3) { cnts[p] -= 3; return false; }
+        return true;
+      });
     }
 
-    // Backtracking helper (limited depth)
-    function backtrack(rem, sl, depth, maxDepth, path) {
-      if (rem.size === 0 && sl.length === 0) return path;
-      if (depth > maxDepth || sl.length >= 7) return null;
+    while (remaining.size > 0 || slot.length > 0) {
+      if (step++ > MAX) return null;
+      if (remaining.size === 0) {
+        return slot.length === 0 ? solution.map(id => ({ id, pattern: patName(byId[id].pattern) })) : null;
+      }
 
-      const key = stateKey(rem, sl);
-      if (failCache.has(key)) return null;
+      const unc = getUncoveredIds(remaining);
+      if (unc.length === 0) return null;
 
-      const unc = getUncoveredIds(rem);
-      if (unc.length === 0) { failCache.add(key); return null; }
+      const slCounts = {};
+      for (const p of slot) slCounts[p] = (slCounts[p] || 0) + 1;
 
-      // Prioritize: complete 3-set, then 2-of-3, then expose most
-      const slCounts = {}; for (const p of sl) slCounts[p] = (slCounts[p] || 0) + 1;
-      unc.sort((a, b) => {
-        const ca = slCounts[byId[a].pattern] || 0, cb = slCounts[byId[b].pattern] || 0;
-        if (ca >= 2 && cb < 2) return -1;
-        if (cb >= 2 && ca < 2) return 1;
-        if (ca >= 1 && cb < 1) return -1;
-        if (cb >= 1 && ca < 1) return 1;
-        // Prefer tiles that expose more
-        return byId[b].covers.length - byId[a].covers.length;
-      });
+      let bestId = null, bestScore = -Infinity;
 
       for (const id of unc) {
-        const newRem = new Set(rem); newRem.delete(id);
-        const newSlot = applySlot(sl, byId[id].pattern);
-        if (newSlot.length > 7) continue;
-        const result = backtrack(newRem, newSlot, depth + 1, maxDepth, [...path, id]);
-        if (result) return result;
-      }
-      failCache.add(key);
-      return null;
-    }
+        const t = byId[id];
+        let score = 0;
 
-    // Main greedy loop: solve in chunks with backtracking lookahead
-    let step = 0;
-    while (remaining.size > 0 || slot.length > 0) {
-      if (step++ > 1000) return null; // safety
-      if (remaining.size === 0) {
-        // All tiles collected, slot should be empty (all matched)
-        if (slot.length === 0) return solution.map(id => ({ id, pattern: patName(byId[id].pattern) }));
-        return null; // leftover in slot — shouldn't happen
-      }
+        // Complete set of 3 — highest priority
+        if ((slCounts[t.pattern] || 0) >= 2) score += 100000;
+        // Two of a kind already in slot
+        else if ((slCounts[t.pattern] || 0) >= 1) score += 10000;
 
-      // Try backtracking with increasing depth
-      let found = false;
-      for (let d = 1; d <= 10; d++) {
-        const path = backtrack(remaining, slot, 0, d, []);
-        if (path) {
-          // Execute the first step of the found path
-          const nextId = path[0];
-          solution.push(nextId);
-          slot = applySlot(slot, byId[nextId].pattern);
-          remaining.delete(nextId);
-          found = true;
-          break;
+        // Simulate removal: what becomes uncovered?
+        const simRem = new Set(remaining); simRem.delete(id);
+        const newUnc = getUncoveredIds(simRem);
+        const newlyExposed = newUnc.filter(nid => !unc.includes(nid));
+
+        // Match bonus: newly exposed tiles that match slot patterns
+        for (const nid of newlyExposed) {
+          const cnt = slCounts[byId[nid].pattern] || 0;
+          if (cnt >= 2) score += 5000;
+          else if (cnt >= 1) score += 2000;
         }
+
+        // Raw exposure count
+        score += newlyExposed.length * 100;
+
+        // Penalty: if slot is nearly full, avoid adding NEW patterns
+        if (slot.length >= 5 && (slCounts[t.pattern] || 0) === 0) score -= 50000;
+        if (slot.length >= 6 && (slCounts[t.pattern] || 0) < 1) score -= 100000;
+
+        // Bonus: patterns that have 2 in slot and this tile makes 3
+        const newSlot = applySlot(slot, t.pattern);
+        if (newSlot.length < slot.length) score += 50000; // elimination happened!
+
+        if (score > bestScore) { bestScore = score; bestId = id; }
       }
 
-      if (!found) { console.error('[tile] stuck at step', step, 'remaining:', remaining.size, 'slot:', slot.length); return null; }
+      if (!bestId) return null;
+
+      solution.push(bestId);
+      slot = applySlot(slot, byId[bestId].pattern);
+      remaining.delete(bestId);
     }
 
     return solution.map(id => ({ id, pattern: patName(byId[id].pattern) }));
   }
 
-  // ---- Simple suggestion (fallback) ----
+  // ---- Simple suggestion (for hint button) ----
   function suggestNext() {
     const { tiles, byId } = buildGraph();
-    const uncovered = getUncovered(tiles);
+    const uncovered = tiles.filter(t => !tiles.some(o => covers(o, t)));
     const slot = getSlotContents();
 
     if (uncovered.length === 0) return null;
 
-    const slotCounts = {};
-    for (const p of slot) slotCounts[p] = (slotCounts[p] || 0) + 1;
+    const slCounts = {};
+    for (const p of slot) slCounts[p] = (slCounts[p] || 0) + 1;
 
-    // Complete a set of 3
+    // Complete set of 3
     for (const t of uncovered) {
-      if ((slotCounts[t.pattern] || 0) >= 2) {
-        return { tile: t, reason: '完成3连', score: 1000 };
-      }
+      if ((slCounts[t.pattern] || 0) >= 2) return { tile: t, reason: '完成3连' };
     }
 
-    // Best: click tile that exposes most matching tiles
+    // Best exposure
     let best = null, bestScore = -1;
     for (const t of uncovered) {
-      let score = 0;
-      const newlyUncovered = [];
-      for (const cid of t.covers) {
-        const ct = byId[cid];
-        // Check if this is the ONLY tile covering ct
-        const stillCovered = ct.coveredBy.filter(c => c !== t.id).some(c => {
-          // Is c still in the remaining tiles?
-          return true; // all tiles are still present at this point
-        });
-        // Simple heuristic: this tile exposes something
-        newlyUncovered.push(ct);
-      }
-
-      for (const nt of newlyUncovered) {
-        const cnt = (slotCounts[nt.pattern] || 0) + (t.pattern === nt.pattern ? 1 : 0);
-        if (cnt === 2) score += 3;
-        else if (cnt === 1) score += 1;
-      }
-      if (score === 0) score = newlyUncovered.length;
+      const score = t.covers.length * 10 + ((slCounts[t.pattern] || 0) >= 1 ? 100 : 0);
       if (score > bestScore) { bestScore = score; best = t; }
     }
-
-    if (best) return { tile: best, reason: `露${bestScore}`, score: bestScore };
-    return { tile: uncovered[0], reason: '无更好', score: 0 };
+    return best ? { tile: best, reason: '贪心最优' } : { tile: uncovered[0], reason: '唯一可选' };
   }
 
-  return { getUncoveredTiles, getSlotContents, suggestNext, solve, getAllTiles, buildGraph };
+  return { getUncoveredTiles, getSlotContents, suggestNext, solve };
 })();
