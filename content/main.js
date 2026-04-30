@@ -403,8 +403,13 @@ async function showHint() {
           (sol.length > 30 ? `<div class="ga-step">... 共 ${sol.length} 步</div>` : '');
         Panel.showHint(`解算完成，耗时 ${secs}s · 共 ${sol.length} 步`);
       } else if (el) {
-        el.textContent = sol === null ? '无法求解' : '已还原';
-        Panel.showHint(sol === null ? `无法求解 (耗时 ${secs}s)` : '已还原');
+        if (sol === null) {
+          // Keep progress visible, just update status
+          Panel.showHint(`超时未解 (耗时 ${secs}s，扫描深度 ${prog.bound}/${prog.maxBound}，${(prog.iter/1000).toFixed(0)}k 节点)`);
+        } else {
+          el.textContent = '已还原';
+          Panel.showHint('已还原');
+        }
       }
       break;
     }
@@ -475,7 +480,7 @@ async function startAutoPlay() {
         let sol = await SolverPuzzle15.solve(s.session.board, s.session.size, prog);
         clearInterval(uiTimer);
         const secs = ((Date.now() - t0) / 1000).toFixed(1);
-        if (!sol) { Panel.showHint(`无法求解 (耗时 ${secs}s)`); Panel.setStatus('进行中', 'ready'); break; }
+        if (!sol) { Panel.showHint(`超时未解 (耗时 ${secs}s，深度 ${prog.bound}/${prog.maxBound}，${(prog.iter/1000).toFixed(0)}k 节点)`); Panel.setStatus('进行中', 'ready'); break; }
         Panel.showHint(`解算完成 ${secs}s · 共 ${sol.length} 步`);
         for (let i = 0; i < sol.length; i++) {
           if (autoPlayStoppedFlag) break;
