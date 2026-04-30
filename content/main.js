@@ -171,6 +171,33 @@ function actFlip(index) {
   if (card) card.click();
 }
 
+// Flip and wait for the card to reveal its face (up to 5s timeout)
+async function actFlipWait(index) {
+  const card = document.querySelector(`.mem-card[data-index="${index}"]`);
+  if (!card) return null;
+  if (card.classList.contains('is-matched')) return 'matched';
+  if (card.classList.contains('is-face-up')) return card.dataset.symbol || 'up';
+
+  card.click();
+
+  // Wait for card to become face-up or matched
+  for (let i = 0; i < 50; i++) {
+    await delay(100, 150);
+    if (card.classList.contains('is-matched')) return 'matched';
+    if (card.classList.contains('is-face-up')) return card.dataset.symbol || 'up';
+  }
+  return null; // timeout
+}
+
+// Wait for mismatch to resolve (both cards flip back)
+async function waitMismatchResolve() {
+  for (let i = 0; i < 20; i++) {
+    await delay(100, 150);
+    const upCards = document.querySelectorAll('.mem-card.is-face-up:not(.is-matched)');
+    if (upCards.length === 0) return;
+  }
+}
+
 function actMoveTile(tileValue) {
   const tile = document.querySelector(`.p15-tile[data-value="${tileValue}"]`);
   if (tile) tile.click();
@@ -308,20 +335,33 @@ function showHint() {
       break;
     }
     case 'memory': {
-      const tracker = SolverMemory.createTracker();
-      tracker.totalCards = (sess.rows || 4) * (sess.cols || 4);
-      const upCards = document.querySelectorAll('.mem-card.is-face-up');
-      upCards.forEach((c) => {
+      const cards = document.querySelectorAll('.mem-card');
+      const info = [];
+      cards.forEach((c) => {
         const idx = parseInt(c.dataset.index);
-        const sym = c.dataset.symbol;
-        if (!isNaN(idx) && sym) SolverMemory.update(tracker, idx, sym, false);
+        if (isNaN(idx)) return;
+        if (c.classList.contains('is-matched')) info.push({ idx, sym: c.dataset.symbol, status: 'matched' });
+        else if (c.classList.contains('is-face-up')) info.push({ idx, sym: c.dataset.symbol || '?', status: 'revealed' });
+        else info.push({ idx, sym: '?', status: 'unknown' });
       });
-      document.querySelectorAll('.mem-card.is-matched').forEach((c) => {
-        const idx = parseInt(c.dataset.index);
-        if (!isNaN(idx)) tracker.matchedIndices.add(idx);
+      // Show in a compact grid
+      const total = info.length;
+      const cols = sess.cols || 4;
+      let tableHTML = '<div class="ga-memory-grid" style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:2px;font-size:10px;margin-bottom:8px">';
+      info.forEach((item) => {
+        const bg = item.status === 'matched' ? '#14532d' : item.status === 'revealed' ? '#312e81' : '#1e293b';
+        tableHTML += `<div style="background:${bg};padding:4px 2px;text-align:center;border-radius:2px" title="idx:${item.idx}">${item.sym}</div>`;
       });
-      const sug = SolverMemory.suggestNext(tracker);
-      Panel.showHint(sug ? `翻第 ${sug.index + 1} 张 (${sug.reason})` : '翻任意未知卡片');
+      tableHTML += '</div>';
+      const body = document.getElementById('ga-panel-body');
+      const existing = document.getElementById('ga-memory-hint');
+      if (existing) existing.outerHTML = tableHTML + '<div id="ga-memory-hint" class="ga-hint"></div>';
+      else {
+        const hintEl = document.getElementById('ga-hint');
+        if (hintEl) hintEl.insertAdjacentHTML('beforebegin', tableHTML);
+        hintEl.id = 'ga-memory-hint';
+      }
+      Panel.showHint('点击"自动完成"开始');
       break;
     }
     case 'puzzle15': {
@@ -428,26 +468,91 @@ async function startAutoPlay() {
         break;
       }
       case 'memory': {
-        const tracker = SolverMemory.createTracker();
+        // Memory pairs auto-play with proper wait-for-server logic
         let s = readGameState();
         if (!s.hasActiveSession) break;
-        tracker.totalCards = (s.session.rows || 4) * (s.session.cols || 4);
-        let lastIdx = -1;
-        for (let round = 0; round < tracker.totalCards * 2 && !autoPlayStoppedFlag; round++) {
-          const sug = SolverMemory.suggestNext(tracker);
-          const idx = sug ? sug.index : (round % tracker.totalCards);
-          if (idx === lastIdx) continue;
-          lastIdx = idx;
-          actFlip(idx);
-          await delay(400, 900);
-          // Read card state from DOM
-          const cardEl = document.querySelector(`.mem-card[data-index="${idx}"]`);
-          if (cardEl && cardEl.dataset.symbol) {
-            SolverMemory.update(tracker, idx, cardEl.dataset.symbol, cardEl.classList.contains('is-matched'));
-          }
+        const totalCards = (s.session.rows || 4) * (s.session.cols || 4);
+        const known = new Map(); // index → symbol
+
+        // First collect already known cards
+        document.querySelectorAll('.mem-card.is-matched').forEach(c => {
+          const idx = parseInt(c.dataset.index);
+          if (!isNaN(idx)) known.set(idx, 'matched');
+        });
+        document.querySelectorAll('.mem-card.is-face-up:not(.is-matched)').forEach(c => {
+          const idx = parseInt(c.dataset.index);
+          if (!isNaN(idx) && c.dataset.symbol) known.set(idx, c.dataset.symbol);
+        });
+
+        for (let round = 0; round < totalCards && !autoPlayStoppedFlag; round++) {
           // Check if all matched
-          const matchedCount = document.querySelectorAll('.mem-card.is-matched').length;
-          if (matchedCount >= tracker.totalCards) break;
+          const matchedNow = document.querySelectorAll('.mem-card.is-matched').length;
+          if (matchedNow >= totalCards) break;
+
+          // Find two unknown cards to flip, or a known pair
+          let firstIdx = -1, secondIdx = -1;
+          const unknowns = [];
+          document.querySelectorAll('.mem-card:not(.is-matched):not(.is-face-up)').forEach(c => {
+            unknowns.push(parseInt(c.dataset.index));
+          });
+
+          if (unknowns.length === 0) break;
+
+          // Strategy: if we have a known symbol match, use it
+          const symToIdx = new Map(); // symbol → index of known revealed card
+          for (const [idx, sym] of known) {
+            if (sym === 'matched') continue;
+            if (symToIdx.has(sym)) {
+              // Found a matching pair!
+              firstIdx = symToIdx.get(sym);
+              secondIdx = idx;
+              break;
+            }
+            symToIdx.set(sym, idx);
+          }
+
+          if (firstIdx < 0) {
+            // No known pair — flip first unknown
+            firstIdx = unknowns[0];
+            const result1 = await actFlipWait(firstIdx);
+            if (result1 && result1 !== 'matched') known.set(firstIdx, result1);
+            if (result1 === 'matched') { known.set(firstIdx, 'matched'); continue; }
+            if (!result1) continue; // timeout
+
+            // Update panel
+            Panel.showHint(`翻第${firstIdx+1}张: ${result1} — 寻找配对...`);
+
+            // Check if we now know a pair
+            const curSym = result1;
+            let matchIdx = -1;
+            for (const [idx, sym] of known) {
+              if (sym === 'matched') continue;
+              if (sym === curSym && idx !== firstIdx) { matchIdx = idx; break; }
+            }
+
+            if (matchIdx >= 0) {
+              secondIdx = matchIdx;
+            } else {
+              // Flip next unknown
+              const nextUnknown = unknowns.find(u => u !== firstIdx);
+              if (nextUnknown === undefined) break;
+              secondIdx = nextUnknown;
+            }
+          }
+
+          if (secondIdx >= 0) {
+            const result2 = await actFlipWait(secondIdx);
+            if (result2 && result2 !== 'matched') known.set(secondIdx, result2);
+            if (result2 === 'matched') { known.set(secondIdx, 'matched'); continue; }
+
+            Panel.showHint(`翻第${secondIdx+1}张: ${result2}`);
+
+            // Wait for mismatch resolution if needed
+            await waitMismatchResolve();
+
+            // Update panel to show current known state
+            updateMemoryPanel(known, totalCards);
+          }
         }
         break;
       }
@@ -466,6 +571,32 @@ function stopAutoPlay() {
   autoPlayRunning = false;
   if (typeof Runner !== 'undefined') Runner.stop();
   Panel.setStatus('已停止', 'waiting');
+}
+
+function updateMemoryPanel(known, totalCards) {
+  const s = readGameState();
+  const cols = s.session?.cols || 4;
+  const rows = s.session?.rows || 4;
+  let html = '<div class="ga-memory-grid" style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:2px;font-size:10px;margin-bottom:8px">';
+  for (let i = 0; i < totalCards; i++) {
+    const val = known.get(i);
+    let bg = '#1e293b', sym = '?';
+    if (val === 'matched') { bg = '#14532d'; sym = '✓'; }
+    else if (val && val !== 'up') { bg = '#312e81'; sym = val; }
+    html += `<div style="background:${bg};padding:4px 2px;text-align:center;border-radius:2px">${sym}</div>`;
+  }
+  html += '</div>';
+  const existing = document.getElementById('ga-memory-grid-ui');
+  if (existing) existing.outerHTML = html;
+  else {
+    const hint = document.getElementById('ga-hint');
+    if (hint) hint.insertAdjacentHTML('beforebegin', html);
+  }
+  // Set ID so we can find it next time
+  const grid = document.querySelector('.ga-memory-grid');
+  if (grid) grid.id = 'ga-memory-grid-ui';
+  const matched = [...known.values()].filter(v => v === 'matched').length;
+  Panel.showHint(`已配对 ${matched}/${totalCards/2}`);
 }
 
 function delay(minMs, maxMs) {

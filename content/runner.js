@@ -220,18 +220,58 @@ const Runner = (() => {
           return 'won';
         }
         case 'memory': {
-          const cards = document.querySelectorAll('.mem-card');
-          const total = cards.length;
-          for (let round = 0; round < total * 2; round++) {
-            if (s.stopRequested) return 'stopped';
-            const card = cards[round % total];
-            if (card && !card.classList.contains('is-matched') && !card.classList.contains('is-face-up')) {
-              card.click();
-            }
-            await delay();
+          const total = document.querySelectorAll('.mem-card').length;
+          const known = new Map();
+          for (let round = 0; round < total && !s.stopRequested; round++) {
             if (document.querySelectorAll('.mem-card.is-matched').length >= total) return 'won';
+
+            // Get unknown cards
+            const unknowns = [];
+            document.querySelectorAll('.mem-card:not(.is-matched):not(.is-face-up)').forEach(c => {
+              unknowns.push(parseInt(c.dataset.index));
+            });
+            if (unknowns.length === 0) break;
+
+            // Flip first unknown
+            const firstIdx = unknowns[0];
+            const card1 = document.querySelector(`.mem-card[data-index="${firstIdx}"]`);
+            if (card1) card1.click();
+            // Wait for reveal
+            for (let w = 0; w < 30; w++) {
+              await delay();
+              if (card1.classList.contains('is-face-up') || card1.classList.contains('is-matched')) break;
+            }
+            const sym1 = card1?.dataset?.symbol;
+
+            // Look for matching known card or flip next unknown
+            let secondIdx = -1;
+            for (const [idx, sym] of known) {
+              if (sym === sym1 && idx !== firstIdx) { secondIdx = idx; break; }
+            }
+            if (secondIdx < 0) {
+              secondIdx = unknowns.find(u => u !== firstIdx);
+              if (secondIdx === undefined) break;
+            }
+
+            const card2 = document.querySelector(`.mem-card[data-index="${secondIdx}"]`);
+            if (card2) card2.click();
+            for (let w = 0; w < 30; w++) {
+              await delay();
+              if (card2.classList.contains('is-face-up') || card2.classList.contains('is-matched')) break;
+            }
+
+            // Track symbols
+            if (sym1) known.set(firstIdx, sym1);
+            const sym2 = card2?.dataset?.symbol;
+            if (sym2) known.set(secondIdx, sym2);
+
+            // Wait for mismatch resolution
+            for (let w = 0; w < 15; w++) {
+              await delay();
+              if (!document.querySelector('.mem-card.is-face-up:not(.is-matched)')) break;
+            }
           }
-          return 'completed';
+          return document.querySelectorAll('.mem-card.is-matched').length >= total ? 'won' : 'completed';
         }
         default: return 'unknown';
       }
