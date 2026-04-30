@@ -18,24 +18,9 @@ const SolverTile = (() => {
     return tiles;
   }
 
-  // Check if a tile is completely uncovered (no higher-layer tile overlaps its rect)
+  // Check if a tile can be clicked — game marks covered tiles with CSS class
   function isTileClickable(el) {
-    const rect = el.getBoundingClientRect();
-    const elLayer = parseInt(el.dataset.layer) || 0;
-    // Get all tiles with higher layer
-    const allTiles = document.querySelectorAll('#tile-stage [data-id][data-layer]');
-    for (const other of allTiles) {
-      if (other === el) continue;
-      const otherLayer = parseInt(other.dataset.layer) || 0;
-      if (otherLayer <= elLayer) continue;
-      const otherRect = other.getBoundingClientRect();
-      // Check if the two rects overlap
-      if (rect.left < otherRect.right && rect.right > otherRect.left &&
-          rect.top < otherRect.bottom && rect.bottom > otherRect.top) {
-        return false; // covered by a higher-layer tile
-      }
-    }
-    return true;
+    return !el.classList.contains('is-covered');
   }
 
   // Read current slot contents
