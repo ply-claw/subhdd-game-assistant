@@ -102,4 +102,18 @@
 
   // Signal ready to content script
   window.postMessage({ source: 'ga-inject', type: 'ready', data: { gameType } }, '*');
+
+  // Watch for game state changes and notify content script
+  function notifyStateChanged() {
+    window.postMessage({ source: 'ga-inject', type: 'stateChanged' }, '*');
+  }
+
+  // Observe the play-panel visibility to detect game start/end
+  const playPanel = document.getElementById('play-panel');
+  if (playPanel) {
+    const observer = new MutationObserver(() => {
+      notifyStateChanged();
+    });
+    observer.observe(playPanel, { attributes: true, attributeFilter: ['hidden'] });
+  }
 })();

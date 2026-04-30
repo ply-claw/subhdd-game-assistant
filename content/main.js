@@ -1,36 +1,202 @@
 'use strict';
 
-let commandSeq = 0;
+// DOM-driven game assistant. Reads game state from the page DOM,
+// dispatches keyboard/mouse events for auto-play.
+// No script injection needed — all game data is in the DOM.
+
 let currentGameType = null;
 let currentState = null;
+let pollTimer = null;
 
-function sendCommand(type, payload) {
-  const commandId = ++commandSeq;
-  return new Promise((resolve) => {
-    const handler = (ev) => {
-      if (ev.data.source !== 'ga-inject') return;
-      if (ev.data.commandId !== commandId) return;
-      window.removeEventListener('message', handler);
-      resolve(ev.data.data);
-    };
-    window.addEventListener('message', handler);
-    window.dispatchEvent(new CustomEvent('ga-command', {
-      detail: { commandId, type, payload },
-    }));
-    // Timeout fallback
-    setTimeout(() => {
-      window.removeEventListener('message', handler);
-      resolve({ error: 'timeout' });
-    }, 10000);
+// Detect game from URL
+function detectGame() {
+  const path = window.location.pathname;
+  if (path.startsWith('/puzzle2048')) return 'puzzle2048';
+  if (path.startsWith('/memory')) return 'memory';
+  if (path.startsWith('/puzzle15')) return 'puzzle15';
+  if (path.startsWith('/sudoku')) return 'sudoku';
+  return null;
+}
+
+// ---- State reading (DOM-based) ----
+
+function readGameState() {
+  const sess = readSessionDOM();
+  return {
+    hasActiveSession: !!sess,
+    gameType: currentGameType,
+    session: sess,
+  };
+}
+
+function readSessionDOM() {
+  const playPanel = document.getElementById('play-panel');
+  if (!playPanel || playPanel.hidden) return null;
+
+  switch (currentGameType) {
+    case 'puzzle2048': return read2048State();
+    case 'memory': return readMemoryState();
+    case 'puzzle15': return readPuzzle15State();
+    case 'sudoku': return readSudokuState();
+    default: return null;
+  }
+}
+
+function read2048State() {
+  const tiles = document.querySelectorAll('.p2048-tile');
+  const sizeEl = document.getElementById('board-wrap');
+  const size = sizeEl ? parseInt(getComputedStyle(sizeEl).getPropertyValue('--size')) || 4 : 4;
+
+  // Build board from tile positions
+  const board = Array.from({ length: size }, () => Array(size).fill(0));
+  tiles.forEach((t) => {
+    const r = parseInt(t.dataset.r);
+    const c = parseInt(t.dataset.c);
+    const v = parseInt(t.dataset.v);
+    if (!isNaN(r) && !isNaN(c) && !isNaN(v)) board[r][c] = v;
   });
+
+  return {
+    board,
+    size,
+    score: parseInt(document.getElementById('hud-score')?.textContent) || 0,
+    max_tile: parseInt(document.getElementById('hud-max')?.textContent) || 0,
+    move_count: parseInt(document.getElementById('hud-moves')?.textContent) || 0,
+    difficulty: document.getElementById('hud-diff')?.textContent?.trim() || '?',
+    target_tile: parseInt(document.getElementById('hud-target')?.textContent) || 2048,
+    won: document.getElementById('page-status')?.classList.contains('is-win') || false,
+    game_over: document.getElementById('page-status')?.classList.contains('is-loss') || false,
+  };
 }
 
-function injectBridge() {
-  const script = document.createElement('script');
-  script.src = chrome.runtime.getURL('content/inject.js');
-  script.onload = () => script.remove();
-  (document.head || document.documentElement).appendChild(script);
+function readMemoryState() {
+  const cards = document.querySelectorAll('.mem-card');
+  const rowsVar = getComputedStyle(document.getElementById('board')).getPropertyValue('--rows');
+  const colsVar = getComputedStyle(document.getElementById('board')).getPropertyValue('--cols');
+  const rows = parseInt(rowsVar) || 4;
+  const cols = parseInt(colsVar) || 4;
+
+  const matched = [];
+  const revealed = [];
+  cards.forEach((card) => {
+    const idx = parseInt(card.dataset.index);
+    if (isNaN(idx)) return;
+    if (card.classList.contains('is-matched')) matched.push(idx);
+    else if (card.classList.contains('is-face-up')) revealed.push({ index: idx, symbol: card.dataset.symbol });
+  });
+
+  return {
+    rows, cols,
+    pairs: parseInt(document.getElementById('hud-total')?.textContent) || 0,
+    peek_limit: parseInt(document.getElementById('hud-peek-limit')?.textContent) || 0,
+    match_count: parseInt(document.getElementById('hud-matched')?.textContent) || 0,
+    peek_count: parseInt(document.getElementById('hud-peek')?.textContent) || 0,
+    matched_indices: matched,
+    currently_revealed: revealed,
+    difficulty: document.getElementById('hud-diff')?.textContent?.trim() || '?',
+    won: document.getElementById('page-status')?.classList.contains('is-win') || false,
+  };
 }
+
+function readPuzzle15State() {
+  const tiles = document.querySelectorAll('.p15-tile');
+  const sizeEl = document.getElementById('board-wrap');
+  const size = sizeEl ? parseInt(getComputedStyle(sizeEl).getPropertyValue('--size')) || 4 : 4;
+
+  const board = Array(size * size).fill(0);
+  tiles.forEach((t) => {
+    const v = parseInt(t.dataset.value);
+    const left = parseFloat(t.style.left) || 0;
+    const top = parseFloat(t.style.top) || 0;
+    const cellSize = parseFloat(getComputedStyle(sizeEl).getPropertyValue('--cell-size')) || 80;
+    const gap = parseFloat(getComputedStyle(sizeEl).getPropertyValue('--cell-gap')) || 6;
+    const pad = parseFloat(getComputedStyle(sizeEl).getPropertyValue('--board-pad')) || 14;
+    const c = Math.round((left - pad) / (cellSize + gap));
+    const r = Math.round((top - pad) / (cellSize + gap));
+    if (r >= 0 && r < size && c >= 0 && c < size) board[r * size + c] = v;
+  });
+
+  return {
+    board,
+    size,
+    move_count: parseInt(document.getElementById('hud-moves')?.textContent) || 0,
+    difficulty: document.getElementById('hud-diff')?.textContent?.trim() || '?',
+    won: document.getElementById('page-status')?.classList.contains('is-win') || false,
+  };
+}
+
+function readSudokuState() {
+  const cells = document.querySelectorAll('.sudoku-cell');
+  const givens = Array(81).fill(0);
+  const user_board = Array(81).fill(0);
+
+  cells.forEach((cell) => {
+    const r = parseInt(cell.dataset.row);
+    const c = parseInt(cell.dataset.col);
+    if (isNaN(r) || isNaN(c)) return;
+    const idx = r * 9 + c;
+    if (cell.classList.contains('is-given')) {
+      givens[idx] = parseInt(cell.textContent) || 0;
+    }
+    user_board[idx] = parseInt(cell.textContent) || 0;
+  });
+
+  const conflicts = [];
+  cells.forEach((cell) => {
+    const r = parseInt(cell.dataset.row);
+    const c = parseInt(cell.dataset.col);
+    if (cell.classList.contains('is-conflict')) conflicts.push([r, c]);
+  });
+
+  return {
+    givens,
+    user_board,
+    conflicts,
+    difficulty: document.getElementById('hud-diff')?.textContent?.trim() || '?',
+    holes: parseInt(document.getElementById('hud-holes')?.textContent) || 0,
+    won: document.getElementById('page-status')?.classList.contains('is-win') || false,
+  };
+}
+
+// ---- Actions (DOM events) ----
+
+function actMove(direction) {
+  const keyMap = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
+  const key = keyMap[direction] || direction;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+}
+
+function actFlip(index) {
+  const card = document.querySelector(`.mem-card[data-index="${index}"]`);
+  if (card) card.click();
+}
+
+function actMoveTile(tileValue) {
+  const tile = document.querySelector(`.p15-tile[data-value="${tileValue}"]`);
+  if (tile) tile.click();
+}
+
+function actFillCell(row, col, value) {
+  // Click the cell
+  const cell = document.querySelector(`.sudoku-cell[data-row="${row}"][data-col="${col}"]`);
+  if (cell) cell.click();
+  // Click number pad
+  const btn = document.querySelector(`.np-btn[data-val="${value}"]`);
+  if (btn) {
+    btn.click();
+  } else if (value === 0) {
+    const clearBtn = document.querySelector('.np-btn.np-clear');
+    if (clearBtn) clearBtn.click();
+  }
+}
+
+function actStartGame(difficulty) {
+  // Click the difficulty card
+  const diffCard = document.querySelector(`[data-diff="${difficulty}"]`);
+  if (diffCard) diffCard.click();
+}
+
+// ---- Panel integration ----
 
 function createPanel() {
   if (document.getElementById('ga-panel-root')) return;
@@ -43,7 +209,7 @@ function createPanel() {
         <button class="ga-panel-close" title="收起">✕</button>
       </div>
       <div class="ga-panel-body" id="ga-panel-body">
-        <p style="color:#94a3b8;padding:12px;font-size:12px">等待游戏加载...</p>
+        <p style="color:#94a3b8;padding:12px;font-size:12px">检测游戏中...</p>
       </div>
       <div class="ga-panel-footer" id="ga-panel-footer"></div>
     </div>
@@ -55,47 +221,24 @@ function createPanel() {
   const toggle = root.querySelector('#ga-panel-toggle');
   const close = root.querySelector('.ga-panel-close');
 
-  function collapse() {
+  close.addEventListener('click', () => {
     panel.classList.add('ga-collapsed');
     toggle.style.display = 'block';
-  }
-  function expand() {
+  });
+  toggle.addEventListener('click', () => {
     panel.classList.remove('ga-collapsed');
     toggle.style.display = 'none';
-  }
+  });
 
-  close.addEventListener('click', collapse);
-  toggle.addEventListener('click', expand);
-
-  // Apply page layout shift
   const mainEl = document.querySelector('main');
   if (mainEl) mainEl.style.marginRight = '280px';
 }
 
-// Listen for messages from inject script
-window.addEventListener('message', (ev) => {
-  if (ev.data.source !== 'ga-inject') return;
-  if (ev.data.type === 'ready') {
-    console.log('[GA] bridge ready for', ev.data.data.gameType);
-    currentGameType = ev.data.data.gameType;
-    updatePanelForGame();
-    setTimeout(refreshState, 500);
-  }
-  if (ev.data.type === 'stateChanged') {
-    refreshState();
-  }
-});
-
-function updatePanelForGame() {
-  if (currentGameType) {
-    Panel.renderLoading(currentGameType);
-  }
-}
-
-async function refreshState() {
+function updatePanel() {
   if (!currentGameType) return;
-  currentState = await sendCommand('getState');
+
   if (currentState && currentState.hasActiveSession) {
+    stopPolling();
     switch (currentGameType) {
       case 'puzzle2048': Panel.render2048(currentState); break;
       case 'memory': Panel.renderMemory(currentState); break;
@@ -108,105 +251,96 @@ async function refreshState() {
   }
 }
 
-// Listen for popup messages
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'getDailyStatus') {
-    getDailyStatus().then(sendResponse);
-    return true;
-  }
-  if (msg.type === 'startDailyRun') {
-    if (typeof Runner !== 'undefined') {
-      Runner.run(msg.depth || 3);
-      sendResponse({ ok: true });
-    } else {
-      sendResponse({ error: 'Runner not loaded' });
-    }
-    return true;
-  }
-});
-
-async function getDailyStatus() {
-  return {
-    remaining: { checkin: '?', puzzle2048: '?', memory: '?', puzzle15: '?', sudoku: '?' },
-    balance: '—',
-  };
+function refreshState() {
+  currentState = readGameState();
+  updatePanel();
 }
+
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(() => {
+    if (!currentGameType) return;
+    const s = readGameState();
+    const wasActive = currentState && currentState.hasActiveSession;
+    if (!wasActive && s.hasActiveSession) {
+      // Game just started or resumed
+      currentState = s;
+      updatePanel();
+    } else if (s.hasActiveSession && currentState && currentState.hasActiveSession) {
+      // Check if board changed
+      currentState = s;
+    }
+  }, 1000);
+}
+
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ---- Hint / Auto play ----
+
+let autoPlayRunning = false;
+let autoPlayStoppedFlag = false;
 
 function bindButtons() {
   const hintBtn = document.getElementById('ga-btn-show-hint');
   const autoBtn = document.getElementById('ga-btn-auto');
   const stopBtn = document.getElementById('ga-btn-stop');
-
   if (hintBtn) hintBtn.onclick = showHint;
   if (autoBtn) autoBtn.onclick = startAutoPlay;
   if (stopBtn) stopBtn.onclick = stopAutoPlay;
 }
 
 function showHint() {
-  if (!currentState || !currentState.hasActiveSession) return;
+  const s = readGameState();
+  if (!s.hasActiveSession) return;
+  const sess = s.session;
 
   switch (currentGameType) {
     case 'puzzle2048': {
-      const board = currentState.session.board;
-      if (!board) return;
+      if (!sess.board) return;
       const depthEl = document.getElementById('ga-depth');
       const depth = depthEl ? Number(depthEl.value) || 3 : 3;
-      const { direction, score } = Solver2048.getBestMove(board, depth);
+      const { direction, score } = Solver2048.getBestMove(sess.board, depth);
       const arrows = { up: '↑', down: '↓', left: '←', right: '→' };
       Panel.showHint(`${arrows[direction] || direction}  (eval: ${score ? score.toFixed(0) : '?'})`);
       break;
     }
     case 'memory': {
-      const sess = currentState.session;
       const tracker = SolverMemory.createTracker();
       tracker.totalCards = (sess.rows || 4) * (sess.cols || 4);
-      // Collect known cards from DOM
-      const cards = document.querySelectorAll('.mem-card.is-face-up');
-      for (const card of cards) {
-        const idx = Number(card.dataset.index);
-        const sym = card.dataset.symbol;
-        if (sym) SolverMemory.update(tracker, idx, sym, false);
-      }
-      const matched = document.querySelectorAll('.mem-card.is-matched');
-      for (const card of matched) {
-        const idx = Number(card.dataset.index);
-        tracker.matchedIndices.add(idx);
-      }
-      const suggestion = SolverMemory.suggestNext(tracker);
-      if (suggestion) {
-        Panel.showHint(`推荐翻第 ${suggestion.index + 1} 张 (${suggestion.reason})`);
-      } else {
-        Panel.showHint('翻任意未知卡片');
-      }
+      const upCards = document.querySelectorAll('.mem-card.is-face-up');
+      upCards.forEach((c) => {
+        const idx = parseInt(c.dataset.index);
+        const sym = c.dataset.symbol;
+        if (!isNaN(idx) && sym) SolverMemory.update(tracker, idx, sym, false);
+      });
+      document.querySelectorAll('.mem-card.is-matched').forEach((c) => {
+        const idx = parseInt(c.dataset.index);
+        if (!isNaN(idx)) tracker.matchedIndices.add(idx);
+      });
+      const sug = SolverMemory.suggestNext(tracker);
+      Panel.showHint(sug ? `翻第 ${sug.index + 1} 张 (${sug.reason})` : '翻任意未知卡片');
       break;
     }
     case 'puzzle15': {
-      const sess = currentState.session;
-      if (!sess || !sess.board) return;
-      const solution = SolverPuzzle15.solve(sess.board, sess.size);
-      if (solution) {
-        const stepsEl = document.getElementById('ga-steps');
-        if (stepsEl) {
-          const maxShow = 30;
-          stepsEl.innerHTML = solution.slice(0, maxShow).map((s, i) =>
-            `<div class="ga-step">${i + 1}. 移动 ${s.tile}</div>`
-          ).join('') + (solution.length > maxShow
-            ? `<div class="ga-step">... 共 ${solution.length} 步</div>` : '');
-        }
-      } else {
-        Panel.showHint('求解中...可能需要较长时间');
+      if (!sess.board || !sess.size) return;
+      const sol = SolverPuzzle15.solve(sess.board, sess.size);
+      const el = document.getElementById('ga-steps');
+      if (sol && el) {
+        el.innerHTML = sol.slice(0, 30).map((s, i) =>
+          `<div class="ga-step">${i + 1}. 移动 ${s.tile}</div>`).join('') +
+          (sol.length > 30 ? `<div class="ga-step">... 共 ${sol.length} 步</div>` : '');
+      } else if (el) {
+        el.textContent = sol === null ? '无法求解' : '已还原';
       }
       break;
     }
     case 'sudoku': {
-      const sess = currentState.session;
-      if (!sess || !sess.givens) return;
-      const solution = SolverSudoku.solve(sess.givens);
-      if (solution) {
-        renderSudokuGrid(solution, sess.givens);
-      } else {
-        Panel.showHint('无法求解,请检查题目');
-      }
+      if (!sess.givens) return;
+      const sol = SolverSudoku.solve(sess.givens);
+      if (sol) renderSudokuGrid(sol, sess.givens);
+      else Panel.showHint('无法求解');
       break;
     }
   }
@@ -226,12 +360,8 @@ function renderSudokuGrid(solution, givens) {
   }
 }
 
-let autoPlayRunning = false;
-let autoPlayStoppedFlag = false;
-
 async function startAutoPlay() {
   if (autoPlayRunning) return;
-  if (!currentState || !currentState.hasActiveSession) return;
   autoPlayRunning = true;
   autoPlayStoppedFlag = false;
   Panel.setStatus('自动完成中...', 'busy');
@@ -242,73 +372,63 @@ async function startAutoPlay() {
         const depthEl = document.getElementById('ga-depth');
         const depth = depthEl ? Number(depthEl.value) || 3 : 3;
         while (!autoPlayStoppedFlag) {
-          currentState = await sendCommand('getState');
-          if (!currentState || !currentState.hasActiveSession) break;
-          const sess = currentState.session;
-          if (sess.won || sess.game_over) break;
-          const board = sess.board;
-          if (!board) break;
-          const { direction } = Solver2048.getBestMove(board, depth);
-          if (!direction) break;
-          Panel.showHint(direction);
-          await sendCommand('move', { direction });
           await delay(300, 800);
+          const s = readGameState();
+          if (!s.hasActiveSession || s.session.won || s.session.game_over) break;
+          const { direction } = Solver2048.getBestMove(s.session.board, depth);
+          if (!direction) break;
+          Panel.showHint({up:'↑',down:'↓',left:'←',right:'→'}[direction]||direction);
+          actMove(direction);
         }
         break;
       }
       case 'puzzle15': {
-        const sess = currentState.session;
-        const solution = SolverPuzzle15.solve(sess.board, sess.size);
-        if (!solution) { Panel.showHint('无法求解'); break; }
-        const stepsEl = document.getElementById('ga-steps');
-        for (let i = 0; i < solution.length; i++) {
+        const s = readGameState();
+        if (!s.hasActiveSession) break;
+        const sol = SolverPuzzle15.solve(s.session.board, s.session.size);
+        if (!sol) { Panel.showHint('无法求解'); break; }
+        for (const step of sol) {
           if (autoPlayStoppedFlag) break;
-          if (stepsEl) stepsEl.innerHTML = solution.slice(i).map((s, j) =>
-            `<div class="ga-step" style="${j === 0 ? 'color:#fbbf24' : ''}">${i + j + 1}. 移动 ${s.tile}</div>`
-          ).slice(0, 15).join('');
-          await sendCommand('move', { tile: solution[i].tile });
+          actMoveTile(step.tile);
           await delay(200, 500);
         }
         break;
       }
       case 'sudoku': {
-        const sess = currentState.session;
-        const solution = SolverSudoku.solve(sess.givens);
-        if (!solution) { Panel.showHint('无法求解'); break; }
-        const givens = sess.givens;
+        const s = readGameState();
+        if (!s.hasActiveSession) break;
+        const sol = SolverSudoku.solve(s.session.givens);
+        if (!sol) { Panel.showHint('无法求解'); break; }
         for (let i = 0; i < 81; i++) {
           if (autoPlayStoppedFlag) break;
-          if (givens[i] !== 0) continue;
-          const r = Math.floor(i / 9);
-          const c = i % 9;
-          await sendCommand('fillCell', { row: r, col: c, value: solution[i] });
+          if (s.session.givens[i] !== 0) continue;
+          const r = Math.floor(i / 9), c = i % 9;
+          actFillCell(r, c, sol[i]);
           await delay(150, 400);
         }
         break;
       }
       case 'memory': {
-        // For memory, we need to track and pair. Use the solver's logic.
-        const sess = currentState.session;
-        const total = (sess.rows || 4) * (sess.cols || 4);
         const tracker = SolverMemory.createTracker();
-        tracker.totalCards = total;
-
-        for (let round = 0; round < total && !autoPlayStoppedFlag; round++) {
-          const suggestion = SolverMemory.suggestNext(tracker);
-          const idx = suggestion ? suggestion.index : round;
-          await sendCommand('flip', { index: idx });
+        let s = readGameState();
+        if (!s.hasActiveSession) break;
+        tracker.totalCards = (s.session.rows || 4) * (s.session.cols || 4);
+        let lastIdx = -1;
+        for (let round = 0; round < tracker.totalCards * 2 && !autoPlayStoppedFlag; round++) {
+          const sug = SolverMemory.suggestNext(tracker);
+          const idx = sug ? sug.index : (round % tracker.totalCards);
+          if (idx === lastIdx) continue;
+          lastIdx = idx;
+          actFlip(idx);
           await delay(400, 900);
-
-          // Read result from DOM after flip
+          // Read card state from DOM
           const cardEl = document.querySelector(`.mem-card[data-index="${idx}"]`);
           if (cardEl && cardEl.dataset.symbol) {
-            const isMatch = cardEl.classList.contains('is-matched');
-            SolverMemory.update(tracker, idx, cardEl.dataset.symbol, isMatch);
+            SolverMemory.update(tracker, idx, cardEl.dataset.symbol, cardEl.classList.contains('is-matched'));
           }
-
           // Check if all matched
-          const matched = document.querySelectorAll('.mem-card.is-matched').length;
-          if (matched >= total) break;
+          const matchedCount = document.querySelectorAll('.mem-card.is-matched').length;
+          if (matchedCount >= tracker.totalCards) break;
         }
         break;
       }
@@ -334,9 +454,38 @@ function delay(minMs, maxMs) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ---- Popup communication ----
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === 'getDailyStatus') {
+    sendResponse({
+      remaining: { checkin: '?', puzzle2048: '?', memory: '?', puzzle15: '?', sudoku: '?' },
+      balance: '—',
+    });
+    return true;
+  }
+  if (msg.type === 'startDailyRun') {
+    if (typeof Runner !== 'undefined') {
+      Runner.run(msg.depth || 3);
+      sendResponse({ ok: true });
+    } else {
+      sendResponse({ error: 'Runner not loaded' });
+    }
+    return true;
+  }
+});
+
+// ---- Init ----
+
 function init() {
-  injectBridge();
+  currentGameType = detectGame();
+  if (!currentGameType) return;
+  console.log('[GA] detected game:', currentGameType);
+
   createPanel();
+  updatePanel();
+  startPolling();
+
   // Resume daily run if one was in progress
   setTimeout(() => {
     if (typeof Runner !== 'undefined') Runner.resume();

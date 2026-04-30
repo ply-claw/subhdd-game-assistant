@@ -25,12 +25,6 @@
       "css": ["content/ui/panel.css"]
     }
   ],
-  "web_accessible_resources": [
-    {
-      "resources": ["content/inject.js"],
-      "matches": ["https://sub.hdd.sb/*"]
-    }
-  ],
   "action": {
     "default_title": "SubHDD Game Assistant",
     "default_popup": "popup/popup.html",
