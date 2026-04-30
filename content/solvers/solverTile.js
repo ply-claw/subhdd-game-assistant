@@ -124,8 +124,8 @@ const SolverTile = (() => {
       if (unc.length === 0) { failCache.add(h); return false; }
 
       // Log depth progress intermittently
-      if (depth <= 3 || depth % 10 === 0) {
-        console.log('[tile] depth', depth, 'remaining:', remaining.size, 'slot:', slot.length, 'unc:', unc.length);
+      if (depth <= 20) {
+        console.log('[tile] depth', depth, 'remaining:', remaining.size, 'slot:', slot.length, 'unc:', unc.length, 'patterns:', slot.slice(-3));
       }
 
       // Prioritize: complete 3-set > 2-of-3 > expose more tiles
