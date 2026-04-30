@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SubHDD Game Assistant",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "description": "Game assistant for sub.hdd.sb — 2048, memory, puzzle15, sudoku",
   "permissions": ["storage", "notifications"],
   "host_permissions": ["https://sub.hdd.sb/*"],

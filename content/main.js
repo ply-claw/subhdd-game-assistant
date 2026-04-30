@@ -682,12 +682,17 @@ async function startAutoPlay() {
           const st = document.getElementById('page-status');
           if (st?.classList.contains('is-win') || st?.classList.contains('is-loss')) break;
           const prev = document.getElementById('remaining-count')?.textContent;
+          const prevSlot = document.getElementById('slot-count')?.textContent;
           Panel.showHint(`[${i+1}/${sol.length}] #${sol[i].id} ${sol[i].pattern}`);
           actClickTile(sol[i].id);
-          for (let w = 0; w < 30; w++) {
-            await delay(100, 150);
-            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
-            if (document.getElementById('remaining-count')?.textContent !== prev) break;
+          // Wait for server AND animation to complete
+          for (let w = 0; w < 40; w++) {
+            await delay(150, 200);
+            const st = document.getElementById('page-status');
+            if (st?.classList.contains('is-win') || st?.classList.contains('is-loss')) break;
+            const cr = document.getElementById('remaining-count')?.textContent;
+            const cs = document.getElementById('slot-count')?.textContent;
+            if (cr !== prev || cs !== prevSlot) { await delay(300, 400); break; } // extra wait for animation
           }
         }
         break;
