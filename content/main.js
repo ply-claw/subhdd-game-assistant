@@ -204,7 +204,12 @@ function readTileState() {
 // Tile action: click a specific tile
 function actClickTile(tileId) {
   const el = document.querySelector(`#tile-stage [data-id="${tileId}"]`);
-  if (el) el.click();
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  // Dispatch directly on the tile so ev.target.closest('[data-id]') finds it
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: cx, clientY: cy, button: 0 }));
 }
 
 function actFlip(index) {

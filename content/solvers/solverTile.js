@@ -18,9 +18,23 @@ const SolverTile = (() => {
     return tiles;
   }
 
-  // Check if a tile can be clicked — game marks covered tiles with CSS class
+  // A tile is covered if any tile with higher z-index overlaps its bounding box.
+  // This matches the browser's paint order: later/higher-z tiles cover earlier/lower.
   function isTileClickable(el) {
-    return !el.classList.contains('is-covered');
+    const rect = el.getBoundingClientRect();
+    const elZ = parseInt(getComputedStyle(el).zIndex) || 0;
+    const allTiles = document.querySelectorAll('#tile-stage [data-id]');
+    for (const other of allTiles) {
+      if (other === el) continue;
+      const otherZ = parseInt(getComputedStyle(other).zIndex) || 0;
+      if (otherZ <= elZ) continue;
+      const otherRect = other.getBoundingClientRect();
+      if (rect.left < otherRect.right && rect.right > otherRect.left &&
+          rect.top < otherRect.bottom && rect.bottom > otherRect.top) {
+        return false;
+      }
+    }
+    return true;
   }
 
   // Read current slot contents
