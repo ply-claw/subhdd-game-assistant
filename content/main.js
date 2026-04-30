@@ -366,9 +366,9 @@ async function showHint() {
     }
     case 'puzzle15': {
       if (!sess.board || !sess.size) return;
-      Panel.showHint('正在解算...');
       const el = document.getElementById('ga-steps');
-      if (el) el.textContent = '正在解算...';
+      if (el) el.innerHTML = '<div class="ga-solving-indicator"><span class="ga-spinner"></span> 正在解算<span class="ga-dots">...</span></div>';
+      Panel.showHint('正在解算...');
       await new Promise(r => setTimeout(r, 50));
       const t0 = Date.now();
       const sol = SolverPuzzle15.solve(sess.board, sess.size);
