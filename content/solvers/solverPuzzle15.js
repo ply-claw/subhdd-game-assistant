@@ -285,14 +285,20 @@ const SolverPuzzle15 = (() => {
     const allMoves = [];
     const locked = new Set();
 
+    console.log('[solver] 5x5 start, board:', curBoard.join(','));
+
     // Place top row tiles 1..size
     for (let c = 0; c < size; c++) {
       const value = c + 1;
       const goalIdx = c;
       if (curBoard[goalIdx] !== value) {
+        console.log('[solver] placing row tile', value, 'locked:', [...locked]);
         const moves = placeTileClassic(curBoard, size, value, 0, c, locked);
-        if (!moves) return null;
+        if (!moves) { console.log('[solver] FAILED placing row tile', value); return null; }
+        console.log('[solver] row tile', value, 'placed in', moves.length, 'moves');
         allMoves.push(...moves);
+      } else {
+        console.log('[solver] row tile', value, 'already in place');
       }
       locked.add(c);
     }
@@ -302,12 +308,18 @@ const SolverPuzzle15 = (() => {
       const value = r * size + 1;
       const goalIdx = r * size;
       if (curBoard[goalIdx] !== value) {
+        console.log('[solver] placing col tile', value, 'locked:', [...locked]);
         const moves = placeTileClassic(curBoard, size, value, r, 0, locked);
-        if (!moves) return null;
+        if (!moves) { console.log('[solver] FAILED placing col tile', value); return null; }
+        console.log('[solver] col tile', value, 'placed in', moves.length, 'moves');
         allMoves.push(...moves);
+      } else {
+        console.log('[solver] col tile', value, 'already in place');
       }
       locked.add(r * size);
     }
+
+    console.log('[solver] row+col done, running IDA* on sub-puzzle');
 
     // Extract and solve 4×4 sub-puzzle
     const subSize = size - 1;
@@ -326,7 +338,8 @@ const SolverPuzzle15 = (() => {
 
     const mapped = subBoard.map(v => (valMap[v] !== undefined ? valMap[v] : 0));
     const subMoves = await solveIDA(mapped, subSize);
-    if (!subMoves) return null;
+    if (!subMoves) { console.log('[solver] IDA* FAILED on sub-puzzle'); return null; }
+    console.log('[solver] IDA* found', subMoves.length, 'moves for sub-puzzle');
 
     const vToOv = {};
     for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
