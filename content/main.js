@@ -204,7 +204,13 @@ function readTileState() {
 // Tile action: click a specific tile
 function actClickTile(tileId) {
   const el = document.querySelector(`#tile-stage [data-id="${tileId}"]`);
-  if (el) el.click();
+  if (!el) return;
+  // Dispatch both click and pointer events for broader compatibility
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+  el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: cx, clientY: cy }));
+  el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: cx, clientY: cy }));
+  el.click();
 }
 
 function actFlip(index) {
