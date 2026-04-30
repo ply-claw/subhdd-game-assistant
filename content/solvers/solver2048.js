@@ -261,41 +261,27 @@ const Solver2048 = (() => {
     const empties = emptyCells(board);
     if (empties.length === 0) return evaluate(board);
 
-    // Adaptive depth and sampling
+    // Adaptive depth (matching C++ dynamic depth reduction)
     const size = getSize(board);
     let effDepth = depth;
-    let sampleN = empties.length; // default: iterate all
-
-    if (size === 3) {
-      // 3×3: tiny board, sample 3 cells to avoid explosion
-      effDepth = Math.min(depth, 4);
-      sampleN = Math.min(empties.length, 3);
-    } else if (size === 4) {
-      // 4×4: iterate ALL (matching C++)
-      if (empties.length > 5) effDepth = Math.min(effDepth, 3);
-      else if (empties.length > 4) effDepth = Math.min(effDepth, 4);
-    } else {
-      // 5×5: sample to keep speed reasonable
-      if (empties.length > 6) effDepth = Math.min(effDepth, 2);
-      sampleN = Math.min(empties.length, 5);
-    }
+    if (empties.length > 5) effDepth = Math.min(effDepth, 3);
+    else if (empties.length > 4 && size >= 4) effDepth = Math.min(effDepth, 4);
 
     // Cache lookup
     const key = (boardKey(board) * 31 + effDepth) >>> 0;
     const cached = cache.get(key);
     if (cached !== undefined) return cached;
 
-    // Sample N empty cells
-    const sampled = empties.sort(() => Math.random() - 0.5).slice(0, sampleN);
+    // Iterate ALL empty cells (matching C++ behavior)
     let total = 0;
-    for (const p of sampled) {
+    for (const p of empties) {
       const b2 = cloneBoard(board); b2[p.r][p.c] = 2;
       total += 0.9 * searchPlayer(b2, effDepth - 1, cache);
       const b4 = cloneBoard(board); b4[p.r][p.c] = 4;
       total += 0.1 * searchPlayer(b4, effDepth - 1, cache);
     }
 
-    const result = Math.round(total / sampled.length);
+    const result = Math.round(total / empties.length);
     cache.set(key, result);
     return result;
   }
