@@ -381,11 +381,21 @@ async function showHint() {
     case 'puzzle15': {
       if (!sess.board || !sess.size) return;
       const el = document.getElementById('ga-steps');
-      if (el) el.innerHTML = '<div class="ga-solving-indicator"><span class="ga-spinner"></span> 正在解算<span class="ga-dots">...</span></div>';
+      if (el) el.innerHTML = '<div class="ga-solving-indicator"><span class="ga-spinner"></span> 正在解算<span class="ga-dots">...</span><div class="ga-progress"><div class="ga-progress-fill" id="ga-ida-progress" style="width:0%"></div></div><div id="ga-ida-info" style="font-size:10px;color:#94a3b8;margin-top:4px"></div></div>';
       Panel.showHint('正在解算...');
+      const prog = { maxBound: 200, bound: 0, iter: 0 };
+      // Update UI periodically
+      const uiTimer = setInterval(() => {
+        const pct = prog.maxBound > 0 ? Math.round(prog.bound / prog.maxBound * 100) : 0;
+        const bar = document.getElementById('ga-ida-progress');
+        const info = document.getElementById('ga-ida-info');
+        if (bar) bar.style.width = Math.min(pct, 99) + '%';
+        if (info) info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+      }, 500);
       await new Promise(r => setTimeout(r, 50));
       const t0 = Date.now();
-      const sol = await SolverPuzzle15.solve(sess.board, sess.size);
+      const sol = await SolverPuzzle15.solve(sess.board, sess.size, prog);
+      clearInterval(uiTimer);
       const secs = ((Date.now() - t0) / 1000).toFixed(1);
       if (sol && el) {
         el.innerHTML = sol.slice(0, 30).map((s, i) =>
@@ -452,9 +462,18 @@ async function startAutoPlay() {
         const el = document.getElementById('ga-steps');
         if (el) el.textContent = '';
         Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
+        const prog = { maxBound: 200, bound: 0, iter: 0 };
+        const uiTimer = setInterval(() => {
+          const pct = prog.maxBound > 0 ? Math.round(prog.bound / prog.maxBound * 100) : 0;
+          const bar = document.getElementById('ga-ida-progress');
+          const info = document.getElementById('ga-ida-info');
+          if (bar) bar.style.width = Math.min(pct, 99) + '%';
+          if (info) info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+        }, 500);
         await new Promise(r => setTimeout(r, 50));
         const t0 = Date.now();
-        let sol = await SolverPuzzle15.solve(s.session.board, s.session.size);
+        let sol = await SolverPuzzle15.solve(s.session.board, s.session.size, prog);
+        clearInterval(uiTimer);
         const secs = ((Date.now() - t0) / 1000).toFixed(1);
         if (!sol) { Panel.showHint(`无法求解 (耗时 ${secs}s)`); Panel.setStatus('进行中', 'ready'); break; }
         Panel.showHint(`解算完成 ${secs}s · 共 ${sol.length} 步`);

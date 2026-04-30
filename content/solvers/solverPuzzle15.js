@@ -56,10 +56,11 @@ const SolverPuzzle15 = (() => {
     return n;
   }
 
-  async function idaSearch(board, size, g, bound, path, visited, iter, deadline) {
+  async function idaSearch(board, size, g, bound, path, visited, iter, deadline, prog) {
     iter.val++;
-    if (iter.val % 3000 === 0) {
+    if (iter.val % 1000 === 0) {
       if (Date.now() > deadline) throw new Error('timeout');
+      if (prog) { prog.iter = iter.val; prog.bound = bound; }
       await new Promise(r => setTimeout(r, 0));
     }
     const f = g + heuristic(board, size);
@@ -77,14 +78,14 @@ const SolverPuzzle15 = (() => {
     neighbors.sort((a,b) => heuristic(a.board,size) - heuristic(b.board,size));
     for (const nb of neighbors) {
       const r = await idaSearch(nb.board, size, g+1, bound,
-        [...path,{tile:nb.tile}], visited, iter, deadline);
+        [...path,{tile:nb.tile}], visited, iter, deadline, prog);
       if (r.path) return r;
       if (r.nextBound < nextBound) nextBound = r.nextBound;
     }
     return { nextBound, path: null };
   }
 
-  async function solve(board, size) {
+  async function solve(board, size, prog) {
     let done = true;
     for (let i = 0; i < size*size; i++) {
       if (board[i] !== (i < size*size-1 ? i+1 : 0)) { done = false; break; }
@@ -93,13 +94,15 @@ const SolverPuzzle15 = (() => {
 
     let bound = heuristic(board, size);
     const MAX_BOUND = size <= 3 ? 40 : size === 4 ? 80 : 200;
-    const DEADLINE = size <= 4 ? Date.now() + 10000 : Date.now() + 120000;
+    const DEADLINE = size <= 4 ? Date.now() + 15000 : Date.now() + 300000;
     const iter = {val:0};
+    if (prog) { prog.maxBound = MAX_BOUND; prog.bound = bound; prog.iter = 0; }
     try {
       while (bound <= MAX_BOUND) {
         if (Date.now() > DEADLINE) return null;
+        if (prog) { prog.bound = bound; }
         const visited = new Map();
-        const r = await idaSearch(board, size, 0, bound, [], visited, iter, DEADLINE);
+        const r = await idaSearch(board, size, 0, bound, [], visited, iter, DEADLINE, prog);
         if (r.path) return r.path;
         if (r.nextBound === Infinity) return null;
         bound = Math.max(bound + 1, r.nextBound);
