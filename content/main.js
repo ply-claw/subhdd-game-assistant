@@ -367,18 +367,22 @@ async function showHint() {
     case 'puzzle15': {
       if (!sess.board || !sess.size) return;
       Panel.showHint('正在解算...');
-      // Yield to let UI update before blocking solve
-      await new Promise(r => setTimeout(r, 50));
-      const sol = SolverPuzzle15.solve(sess.board, sess.size);
       const el = document.getElementById('ga-steps');
+      if (el) el.textContent = '正在解算...';
+      const timerInterval = startTimer();
+      await new Promise(r => setTimeout(r, 50));
+      const startMs = Date.now();
+      const sol = SolverPuzzle15.solve(sess.board, sess.size);
+      const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
+      stopTimer(timerInterval);
       if (sol && el) {
         el.innerHTML = sol.slice(0, 30).map((s, i) =>
           `<div class="ga-step">${i + 1}. 移动 ${s.tile}</div>`).join('') +
           (sol.length > 30 ? `<div class="ga-step">... 共 ${sol.length} 步</div>` : '');
-        Panel.showHint(`共 ${sol.length} 步`);
+        Panel.showHint(`解算完成，耗时 ${elapsed}s · 共 ${sol.length} 步`);
       } else if (el) {
         el.textContent = sol === null ? '无法求解' : '已还原';
-        Panel.showHint(sol === null ? '无法求解' : '已还原');
+        Panel.showHint(sol === null ? `无法求解 (耗时 ${elapsed}s)` : '已还原');
       }
       break;
     }
@@ -449,10 +453,17 @@ async function startAutoPlay() {
       case 'puzzle15': {
         let s = readGameState();
         if (!s.hasActiveSession) break;
+        const el = document.getElementById('ga-steps');
+        if (el) el.textContent = '';
         Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
+        const ti = startTimer();
         await new Promise(r => setTimeout(r, 50));
+        const solveStart = Date.now();
         let sol = SolverPuzzle15.solve(s.session.board, s.session.size);
-        if (!sol) { Panel.showHint('无法求解'); Panel.setStatus('进行中', 'ready'); break; }
+        const elapsed = ((Date.now() - solveStart) / 1000).toFixed(1);
+        stopTimer(ti);
+        if (!sol) { Panel.showHint(`无法求解 (耗时 ${elapsed}s)`); Panel.setStatus('进行中', 'ready'); break; }
+        Panel.showHint(`解算完成 ${elapsed}s · 共 ${sol.length} 步`);
         for (let i = 0; i < sol.length; i++) {
           if (autoPlayStoppedFlag) break;
           const step = sol[i];
@@ -633,6 +644,20 @@ function updateMemoryPanel(known, totalCards) {
   if (grid) grid.id = 'ga-memory-grid-ui';
   const matched = [...known.values()].filter(v => v === 'matched').length;
   Panel.showHint(`已配对 ${matched}/${totalCards/2}`);
+}
+
+let timerId = null;
+function startTimer() {
+  const start = Date.now();
+  const hint = document.getElementById('ga-hint');
+  timerId = setInterval(() => {
+    const secs = ((Date.now() - start) / 1000).toFixed(1);
+    if (hint) hint.textContent = `正在解算... ${secs}s`;
+  }, 200);
+  return timerId;
+}
+function stopTimer(id) {
+  clearInterval(id);
 }
 
 function delay(minMs, maxMs) {
