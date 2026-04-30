@@ -165,7 +165,7 @@ const Runner = (() => {
             if (!isNaN(r) && !isNaN(c)) board[r][c] = v || 0;
           });
           const best = Solver2048.getBestMove(board, s.depth);
-          if (!best.direction) return 'stuck';
+          if (!best || !best.direction) return 'stuck';
           const km = {up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'};
           document.dispatchEvent(new KeyboardEvent('keydown', {key: km[best.direction], bubbles: true}));
           break;

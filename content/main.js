@@ -301,9 +301,10 @@ function showHint() {
       if (!sess.board) return;
       const depthEl = document.getElementById('ga-depth');
       const depth = depthEl ? Number(depthEl.value) || 3 : 3;
-      const { direction, score } = Solver2048.getBestMove(sess.board, depth);
+      const best = Solver2048.getBestMove(sess.board, depth);
+      if (!best || !best.direction) { Panel.showHint('无可用方向'); break; }
       const arrows = { up: '↑', down: '↓', left: '←', right: '→' };
-      Panel.showHint(`${arrows[direction] || direction}  (eval: ${score ? score.toFixed(0) : '?'})`);
+      Panel.showHint(`${arrows[best.direction] || best.direction}  (eval: ${best.score ? best.score.toFixed(0) : '?'})`);
       break;
     }
     case 'memory': {
@@ -371,14 +372,32 @@ async function startAutoPlay() {
       case 'puzzle2048': {
         const depthEl = document.getElementById('ga-depth');
         const depth = depthEl ? Number(depthEl.value) || 3 : 3;
+        let lastDir = '';
+        let stuckCount = 0;
         while (!autoPlayStoppedFlag) {
           await delay(300, 800);
           const s = readGameState();
           if (!s.hasActiveSession || s.session.won || s.session.game_over) break;
-          const { direction } = Solver2048.getBestMove(s.session.board, depth);
-          if (!direction) break;
-          Panel.showHint({up:'↑',down:'↓',left:'←',right:'→'}[direction]||direction);
-          actMove(direction);
+          const best = Solver2048.getBestMove(s.session.board, depth);
+          if (!best || !best.direction) break;
+          // Detect stuck: same direction repeated without effect
+          if (best.direction === lastDir) {
+            stuckCount++;
+            if (stuckCount > 3) {
+              console.log('[GA] stuck, trying all directions');
+              const dirs = ['up','down','left','right'];
+              for (const d of dirs) {
+                if (d !== lastDir) {
+                  actMove(d); await delay(200, 400);
+                  break;
+                }
+              }
+              stuckCount = 0;
+            }
+          } else { stuckCount = 0; }
+          lastDir = best.direction;
+          Panel.showHint({up:'↑',down:'↓',left:'←',right:'→'}[best.direction]||best.direction);
+          actMove(best.direction);
         }
         break;
       }

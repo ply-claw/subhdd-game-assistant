@@ -96,6 +96,16 @@ const Solver2048 = (() => {
       }
     }
 
+    // Verify board actually changed by comparing cells
+    if (!changed) {
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          if (newBoard[r][c] !== board[r][c]) { changed = true; break; }
+        }
+        if (changed) break;
+      }
+    }
+
     return { board: newBoard, score: totalScore, changed };
   }
 
@@ -188,8 +198,9 @@ const Solver2048 = (() => {
   function getBestMove(board, depth) {
     const d = Math.max(1, Math.min(depth || 3, 5));
     const result = expectimax(board, d, true);
+    if (!result.direction) return null; // no valid moves
     return {
-      direction: result.direction || 'up',
+      direction: result.direction,
       score: result.score,
       depth: d,
     };
