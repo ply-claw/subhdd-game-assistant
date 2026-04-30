@@ -109,18 +109,6 @@ const SolverPuzzle15 = (() => {
     const goal = getGoal(size);
     if (board.every((v, i) => v === goal[i])) return [];
 
-    // Quick check: is puzzle solvable?
-    let inv = 0;
-    const flat = board.filter(v => v !== 0);
-    for (let i = 0; i < flat.length; i++)
-      for (let j = i + 1; j < flat.length; j++)
-        if (flat[i] > flat[j]) inv++;
-    if (size % 2 === 0) {
-      const zeroRow = Math.floor(board.indexOf(0) / size);
-      inv += (size - zeroRow);
-    }
-    if (inv % 2 !== 0) return null; // unsolvable (shouldn't happen per server)
-
     let bound = heuristic(board, size);
     const MAX_BOUND = size <= 3 ? 30 : size === 4 ? 80 : 200;
 
