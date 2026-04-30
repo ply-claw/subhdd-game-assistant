@@ -318,7 +318,7 @@ function bindButtons() {
   if (stopBtn) stopBtn.onclick = stopAutoPlay;
 }
 
-function showHint() {
+async function showHint() {
   const s = readGameState();
   if (!s.hasActiveSession) return;
   const sess = s.session;
@@ -366,14 +366,19 @@ function showHint() {
     }
     case 'puzzle15': {
       if (!sess.board || !sess.size) return;
+      Panel.showHint('正在解算...');
+      // Yield to let UI update before blocking solve
+      await new Promise(r => setTimeout(r, 50));
       const sol = SolverPuzzle15.solve(sess.board, sess.size);
       const el = document.getElementById('ga-steps');
       if (sol && el) {
         el.innerHTML = sol.slice(0, 30).map((s, i) =>
           `<div class="ga-step">${i + 1}. 移动 ${s.tile}</div>`).join('') +
           (sol.length > 30 ? `<div class="ga-step">... 共 ${sol.length} 步</div>` : '');
+        Panel.showHint(`共 ${sol.length} 步`);
       } else if (el) {
         el.textContent = sol === null ? '无法求解' : '已还原';
+        Panel.showHint(sol === null ? '无法求解' : '已还原');
       }
       break;
     }
@@ -444,8 +449,10 @@ async function startAutoPlay() {
       case 'puzzle15': {
         let s = readGameState();
         if (!s.hasActiveSession) break;
+        Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
+        await new Promise(r => setTimeout(r, 50));
         let sol = SolverPuzzle15.solve(s.session.board, s.session.size);
-        if (!sol) { Panel.showHint('无法求解'); break; }
+        if (!sol) { Panel.showHint('无法求解'); Panel.setStatus('进行中', 'ready'); break; }
         for (let i = 0; i < sol.length; i++) {
           if (autoPlayStoppedFlag) break;
           const step = sol[i];
