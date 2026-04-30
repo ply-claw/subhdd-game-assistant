@@ -390,7 +390,10 @@ async function showHint() {
         const bar = document.getElementById('ga-ida-progress');
         const info = document.getElementById('ga-ida-info');
         if (bar) bar.style.width = Math.min(pct, 99) + '%';
-        if (info) info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+        if (info) {
+          if (prog.maxBound > 1000) info.textContent = `${(prog.iter/1000).toFixed(0)}k 节点`;
+          else info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+        }
       }, 500);
       await new Promise(r => setTimeout(r, 50));
       const t0 = Date.now();
@@ -473,7 +476,10 @@ async function startAutoPlay() {
           const bar = document.getElementById('ga-ida-progress');
           const info = document.getElementById('ga-ida-info');
           if (bar) bar.style.width = Math.min(pct, 99) + '%';
-          if (info) info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+          if (info) {
+          if (prog.maxBound > 1000) info.textContent = `${(prog.iter/1000).toFixed(0)}k 节点`;
+          else info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+        }
         }, 500);
         await new Promise(r => setTimeout(r, 50));
         const t0 = Date.now();

@@ -174,76 +174,50 @@ const SolverPuzzle15 = (() => {
   }
 
   // ---- Main solve ----
+  // Greedy best-first for 5×5 (finds any solution, not optimal)
+  async function greedySolve(board, size, prog, deadline) {
+    const goal = Array.from({length:size*size}, (_,i) => i<size*size-1?i+1:0);
+    const goalKey = boardToKey(goal);
+    if (boardToKey(board) === goalKey) return [];
+
+    const heap = new Heap();
+    heap.push({ board, h: heuristic(board, size), path: [] });
+    const visited = new Set([boardToKey(board)]);
+    let iter = 0;
+    const MAX = 5000000; // 5M nodes max
+
+    if (prog) { prog.maxBound = MAX; prog.iter = 0; }
+
+    while (heap.size > 0 && iter < MAX) {
+      iter++;
+      if (iter % 5000 === 0) {
+        if (Date.now() > deadline) return null;
+        if (prog) prog.iter = iter;
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      const cur = heap.pop();
+      if (!cur) return null;
+      if (boardToKey(cur.board) === goalKey) return cur.path;
+
+      const neighbors = getNeighbors(cur.board, size, null);
+      for (const nb of neighbors) {
+        const key = boardToKey(nb.board);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        heap.push({ board: nb.board, h: heuristic(nb.board, size), path: [...cur.path, { tile: nb.tile }] });
+      }
+    }
+    return null;
+  }
+
   async function solve(board, size, prog) {
     if (size <= 4) return await solveIDA(board, size, prog);
 
-    // 5×5: place first row + first column, then IDA* on 4×4 remainder
-    let cur = board.slice();
-    const allMoves = [];
-    const locked = new Set();
+    // 5×5: greedy best-first (IDA* too slow for 25-puzzle)
     const DL = Date.now() + 300000;
-    if (prog) { prog.maxBound = 9; prog.bound = 0; prog.iter = 0; }
-
-    // Place first row tiles 1..size
-    for (let c = 0; c < size; c++) {
-      const goalIdx = c;
-      if (cur[goalIdx] === c + 1) { locked.add(goalIdx); continue; }
-      const original = cur.slice();
-      const moves = await aStarPlaceTile(cur, size, c + 1, 0, c, locked, original, DL);
-      if (!moves) return null;
-      for (const m of moves) {
-        const z = cur.indexOf(0), ti = cur.indexOf(m.tile);
-        [cur[z], cur[ti]] = [cur[ti], cur[z]];
-      }
-      allMoves.push(...moves);
-      locked.add(goalIdx);
-      if (prog) prog.bound = c + 1;
-    }
-
-    // Place first column tiles (size+1)..(size*size)
-    for (let r = 1; r < size; r++) {
-      const goalIdx = r * size;
-      const value = r * size + 1;
-      if (cur[goalIdx] === value) { locked.add(goalIdx); continue; }
-      const original = cur.slice();
-      const moves = await aStarPlaceTile(cur, size, value, r, 0, locked, original, DL);
-      if (!moves) return null;
-      for (const m of moves) {
-        const z = cur.indexOf(0), ti = cur.indexOf(m.tile);
-        [cur[z], cur[ti]] = [cur[ti], cur[z]];
-      }
-      allMoves.push(...moves);
-      locked.add(goalIdx);
-      if (prog) prog.bound = size + r;
-    }
-
-    // Extract 4×4 sub-puzzle and remap values
-    const subSize = size - 1;
-    const subBoard = [];
-    for (let r = 1; r < size; r++)
-      for (let c = 1; c < size; c++)
-        subBoard.push(cur[r*size+c]);
-
-    const valMap = {0: 0};
-    for (let r = 1; r < size; r++)
-      for (let c = 1; c < size; c++) {
-        valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
-      }
-
-    const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
-    const subMoves = await solveIDA(mapped, subSize);
-    if (!subMoves) return null;
-
-    // Map sub-moves back
-    const vToOv = {};
-    for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
-    for (const sm of subMoves) {
-      const ot = vToOv[sm.tile];
-      if (ot === undefined) return null;
-      allMoves.push({ tile: ot });
-    }
-
-    return allMoves;
+    if (prog) { prog.maxBound = 5000000; prog.bound = 0; prog.iter = 0; }
+    return await greedySolve(board, size, prog, DL);
   }
 
   return { solve };
