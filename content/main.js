@@ -204,13 +204,7 @@ function readTileState() {
 // Tile action: click a specific tile
 function actClickTile(tileId) {
   const el = document.querySelector(`#tile-stage [data-id="${tileId}"]`);
-  if (!el) return;
-  // Dispatch both click and pointer events for broader compatibility
-  const rect = el.getBoundingClientRect();
-  const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
-  el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: cx, clientY: cy }));
-  el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: cx, clientY: cy }));
-  el.click();
+  if (el) el.click();
 }
 
 function actFlip(index) {
@@ -673,29 +667,44 @@ async function startAutoPlay() {
         break;
       }
       case 'tile': {
+        let failedTiles = new Set(); // track tiles that server rejected
         while (!autoPlayStoppedFlag) {
           await delay(300, 600);
           const status = document.getElementById('page-status');
           if (status && status.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
           if (status && status.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
 
-          const uncovered = SolverTile.getUncoveredTiles();
+          let uncovered = SolverTile.getUncoveredTiles();
+          // Filter out previously failed tiles
+          uncovered = uncovered.filter(t => !failedTiles.has(t.id));
           const slot = SolverTile.getSlotContents();
           const sug = SolverTile.suggestNext(uncovered, slot);
-          if (!sug) { Panel.setStatus('无可用方块', 'loss'); break; }
+          if (!sug) {
+            if (uncovered.length === 0) { Panel.setStatus('无可用方块', 'loss'); break; }
+            // All suggestions failed — clear failed list and retry
+            failedTiles.clear();
+            continue;
+          }
 
           const prevRemaining = document.getElementById('remaining-count')?.textContent;
           const prevSlot = document.getElementById('slot-count')?.textContent;
-          Panel.showHint(`点 ${sug.tile.pattern} (${sug.reason})`);
+          Panel.showHint(`点 #${sug.tile.id} ${sug.tile.pattern} (${sug.reason})`);
           actClickTile(sug.tile.id);
 
-          for (let w = 0; w < 40; w++) {
+          // Wait for server response
+          let changed = false;
+          for (let w = 0; w < 30; w++) {
             await delay(100, 150);
             const st = document.getElementById('page-status');
-            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
+            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) { changed = true; break; }
             const curRemaining = document.getElementById('remaining-count')?.textContent;
             const curSlot = document.getElementById('slot-count')?.textContent;
-            if (curRemaining !== prevRemaining || curSlot !== prevSlot) break;
+            if (curRemaining !== prevRemaining || curSlot !== prevSlot) { changed = true; break; }
+          }
+          if (!changed) {
+            // Server rejected this tile — mark as failed and retry
+            failedTiles.add(sug.tile.id);
+            Panel.showHint(`#${sug.tile.id} 不可点，重试...`);
           }
         }
         break;

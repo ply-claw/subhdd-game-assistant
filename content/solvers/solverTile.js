@@ -9,6 +9,7 @@ const SolverTile = (() => {
   function getUncoveredTiles() {
     const tiles = [];
     document.querySelectorAll('#tile-stage [data-id]').forEach((el) => {
+      if (!isTileClickable(el)) return;
       const id = el.dataset.id;
       const pattern = el.dataset.pattern;
       const layer = parseInt(el.dataset.layer) || 0;
@@ -17,19 +18,21 @@ const SolverTile = (() => {
     return tiles;
   }
 
-  // Check if a tile can be clicked (not covered by another tile)
+  // Check if a tile is completely uncovered (no higher-layer tile overlaps its rect)
   function isTileClickable(el) {
     const rect = el.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    // Check if any higher-layer tile covers this point
     const elLayer = parseInt(el.dataset.layer) || 0;
-    const above = document.elementsFromPoint(cx, cy);
-    for (const e of above) {
-      if (e === el) break; // reached our tile
-      if (e.dataset && e.dataset.id && e.dataset.layer) {
-        const l = parseInt(e.dataset.layer);
-        if (l > elLayer) return false;
+    // Get all tiles with higher layer
+    const allTiles = document.querySelectorAll('#tile-stage [data-id][data-layer]');
+    for (const other of allTiles) {
+      if (other === el) continue;
+      const otherLayer = parseInt(other.dataset.layer) || 0;
+      if (otherLayer <= elLayer) continue;
+      const otherRect = other.getBoundingClientRect();
+      // Check if the two rects overlap
+      if (rect.left < otherRect.right && rect.right > otherRect.left &&
+          rect.top < otherRect.bottom && rect.bottom > otherRect.top) {
+        return false; // covered by a higher-layer tile
       }
     }
     return true;
