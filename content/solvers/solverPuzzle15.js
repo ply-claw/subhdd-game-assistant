@@ -92,7 +92,7 @@ const SolverPuzzle15 = (() => {
   }
 
   // Execute a sequence of empty moves on the board, returning the tile moved at each step
-  function executeEmptyPath(board, size, path, locked) {
+  function executeEmptyPath(board, size, path, tileLock) {
     const moves = [];
     for (const nextZ of path) {
       const curZ = board.indexOf(0);
@@ -162,7 +162,7 @@ const SolverPuzzle15 = (() => {
             const tileLock = new Set(locked); tileLock.add(tileIdx);
             const path = getEmptyPath(board, size, nr, nc, tileLock);
             if (path) {
-              const moves = executeEmptyPath(board, size, path, locked);
+              const moves = executeEmptyPath(board, size, path, tileLock);
               if (moves) allMoves.push(...moves);
               const curZ = board.indexOf(0);
               if (curZ === nr*size+nc) {
@@ -181,7 +181,7 @@ const SolverPuzzle15 = (() => {
         tileLock.add(tileIdx);
         const path = getEmptyPath(board, size, etR, etC, tileLock);
         if (!path) { console.error('[p15] no path for empty to', etR, etC, 'locked:', [...tileLock]); return null; }
-        const moves = executeEmptyPath(board, size, path, locked);
+        const moves = executeEmptyPath(board, size, path, tileLock);
         if (!moves) return null;
         allMoves.push(...moves);
 
