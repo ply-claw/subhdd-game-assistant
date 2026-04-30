@@ -156,7 +156,7 @@ const SolverPuzzle15 = (() => {
     heap.push({ board, g: 0, f: h(board) * 2, path: [] }); // w=2 weighted A*
     const bestG = new Map([[startKey, 0]]);
     let iter = 0;
-    const MAX = 4000000;
+    const MAX = 32000000;
 
     if (prog) { prog.maxBound = MAX; prog.iter = 0; }
 
@@ -187,7 +187,7 @@ const SolverPuzzle15 = (() => {
     if (size <= 4) return await solveIDA(board, size, prog);
 
     // 5×5: 3-phase search
-    const DL = Date.now() + 300000;
+    const DL = Date.now() + 600000;
     let cur = board.slice();
     const allMoves = [];
     if (prog) { prog.maxBound = 3; prog.bound = 0; }
