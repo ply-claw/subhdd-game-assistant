@@ -85,6 +85,61 @@ const SolverPuzzle15 = (() => {
     return { nextBound, path: null };
   }
 
+  // Simple binary heap for priority queue
+  class Heap {
+    constructor() { this.d = []; }
+    push(item) {
+      this.d.push(item); let i = this.d.length-1;
+      while (i>0) { const p=(i-1)>>1; if (this.d[p].h <= this.d[i].h) break; [this.d[p],this.d[i]]=[this.d[i],this.d[p]]; i=p; }
+    }
+    pop() {
+      if (this.d.length<=1) return this.d.pop()||null; const t=this.d[0]; this.d[0]=this.d.pop();
+      let i=0; while(1){ let s=i,l=i*2+1,r=i*2+2; if(l<this.d.length&&this.d[l].h<this.d[s].h)s=l; if(r<this.d.length&&this.d[r].h<this.d[s].h)s=r; if(s===i)break; [this.d[i],this.d[s]]=[this.d[s],this.d[i]]; i=s; } return t;
+    }
+    get size() { return this.d.length; }
+  }
+
+  // Greedy best-first: always expand node with lowest heuristic.
+  // Finds ANY solution quickly (not optimal). Good for 5×5.
+  async function greedySolve(board, size, prog, deadline) {
+    const startKey = boardToKey(board);
+    const goal = Array.from({length:size*size}, (_,i) => i<size*size-1?i+1:0);
+    const goalKey = boardToKey(goal);
+    if (startKey === goalKey) return [];
+
+    const heap = new Heap();
+    const startH = heuristic(board, size);
+    heap.push({ board, h: startH, path: [] });
+    const visited = new Set([startKey]);
+    let iter = 0;
+    const MAX_NODES = 2000000;
+
+    if (prog) { prog.maxBound = MAX_NODES; prog.iter = 0; prog.bound = startH; }
+
+    while (heap.size > 0 && iter < MAX_NODES) {
+      iter++;
+      if (iter % 5000 === 0) {
+        if (Date.now() > deadline) return null;
+        if (prog) { prog.iter = iter; prog.bound = 0; }
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      const cur = heap.pop();
+      if (!cur) return null;
+      if (boardToKey(cur.board) === goalKey) return cur.path;
+
+      const neighbors = getNeighbors(cur.board, size);
+      for (const nb of neighbors) {
+        const key = boardToKey(nb.board);
+        if (visited.has(key)) continue;
+        visited.add(key);
+        const h = heuristic(nb.board, size);
+        heap.push({ board: nb.board, h, path: [...cur.path, { tile: nb.tile }] });
+      }
+    }
+    return null;
+  }
+
   async function solve(board, size, prog) {
     let done = true;
     for (let i = 0; i < size*size; i++) {
@@ -92,9 +147,17 @@ const SolverPuzzle15 = (() => {
     }
     if (done) return [];
 
+    // 5×5: use greedy search (IDA* too slow for 25-puzzle)
+    if (size >= 5) {
+      const DEADLINE = Date.now() + 300000;
+      if (prog) { prog.maxBound = 2000000; prog.bound = 0; prog.iter = 0; }
+      return await greedySolve(board, size, prog, DEADLINE);
+    }
+
+    // 3×3 and 4×4: IDA* (fast)
     let bound = heuristic(board, size);
-    const MAX_BOUND = size <= 3 ? 40 : size === 4 ? 80 : 200;
-    const DEADLINE = size <= 4 ? Date.now() + 15000 : Date.now() + 300000;
+    const MAX_BOUND = size <= 3 ? 40 : 80;
+    const DEADLINE = Date.now() + 15000;
     const iter = {val:0};
     if (prog) { prog.maxBound = MAX_BOUND; prog.bound = bound; prog.iter = 0; }
     try {
