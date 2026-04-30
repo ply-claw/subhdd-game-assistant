@@ -670,25 +670,43 @@ async function startAutoPlay() {
         break;
       }
       case 'tile': {
+        let failedTiles = [];
         while (!autoPlayStoppedFlag) {
           await delay(300, 600);
           const st = document.getElementById('page-status');
           if (st && st.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
           if (st && st.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
 
-          const sug = SolverTile.suggestNext();
-          if (!sug) { Panel.setStatus('无可用方块', 'loss'); break; }
+          let sug = SolverTile.suggestNext();
+          // Filter out recently failed tiles
+          if (sug && failedTiles.includes(sug.tile.id)) sug = null;
+          if (!sug) {
+            // Try any uncovered tile not in failed list
+            const all = SolverTile.getUncoveredTiles().filter(t => !failedTiles.includes(t.id));
+            if (all.length === 0) { Panel.setStatus('无可用方块', 'loss'); break; }
+            sug = { tile: all[0], reason: '备选' };
+          }
 
           const prevRemaining = document.getElementById('remaining-count')?.textContent;
+          const prevSlot = document.getElementById('slot-count')?.textContent;
           Panel.showHint(`#${sug.tile.id} ${sug.tile.pattern} (${sug.reason})`);
           actClickTile(sug.tile.id);
 
           // Wait for server
-          for (let w = 0; w < 30; w++) {
+          let changed = false;
+          for (let w = 0; w < 25; w++) {
             await delay(100, 150);
-            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
-            const curRemaining = document.getElementById('remaining-count')?.textContent;
-            if (curRemaining !== prevRemaining) break;
+            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) { changed = true; break; }
+            const cr = document.getElementById('remaining-count')?.textContent;
+            const cs = document.getElementById('slot-count')?.textContent;
+            if (cr !== prevRemaining || cs !== prevSlot) { changed = true; break; }
+          }
+          if (!changed) {
+            failedTiles.push(sug.tile.id);
+            if (failedTiles.length > 5) failedTiles.shift(); // keep only recent
+            Panel.showHint(`#${sug.tile.id} 无响应，跳过`);
+          } else {
+            failedTiles = []; // clear on success
           }
         }
         break;
