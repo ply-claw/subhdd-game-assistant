@@ -458,9 +458,7 @@ async function showHint() {
       break;
     }
     case 'tile': {
-      const uncovered = SolverTile.getUncoveredTiles();
-      const slot = SolverTile.getSlotContents();
-      const sug = SolverTile.suggestNext(uncovered, slot);
+      const sug = SolverTile.suggestNext();
       if (sug) Panel.showHint(`点 #${sug.tile.id}: ${sug.tile.pattern} (${sug.reason})`);
       else Panel.showHint('无可用方块');
       break;
@@ -672,44 +670,31 @@ async function startAutoPlay() {
         break;
       }
       case 'tile': {
-        let failedTiles = new Set(); // track tiles that server rejected
-        while (!autoPlayStoppedFlag) {
-          await delay(300, 600);
-          const status = document.getElementById('page-status');
-          if (status && status.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
-          if (status && status.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
+        // Phase 1: compute solution
+        Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
+        const el = document.getElementById('ga-panel-body');
+        await new Promise(r => setTimeout(r, 50));
+        const t0 = Date.now();
+        const solution = SolverTile.solve();
+        const secs = ((Date.now() - t0) / 1000).toFixed(1);
+        if (!solution) { Panel.showHint(`无解 (耗时 ${secs}s)`); Panel.setStatus('无解', 'loss'); break; }
+        Panel.showHint(`解算完成 ${secs}s · ${solution.length} 步`);
 
-          let uncovered = SolverTile.getUncoveredTiles();
-          // Filter out previously failed tiles
-          uncovered = uncovered.filter(t => !failedTiles.has(t.id));
-          const slot = SolverTile.getSlotContents();
-          const sug = SolverTile.suggestNext(uncovered, slot);
-          if (!sug) {
-            if (uncovered.length === 0) { Panel.setStatus('无可用方块', 'loss'); break; }
-            // All suggestions failed — clear failed list and retry
-            failedTiles.clear();
-            continue;
-          }
-
+        // Phase 2: execute step by step
+        for (let i = 0; i < solution.length; i++) {
+          if (autoPlayStoppedFlag) break;
+          const step = solution[i];
+          Panel.showHint(`[${i+1}/${solution.length}] #${step.id} ${step.pattern}`);
           const prevRemaining = document.getElementById('remaining-count')?.textContent;
-          const prevSlot = document.getElementById('slot-count')?.textContent;
-          Panel.showHint(`点 #${sug.tile.id} ${sug.tile.pattern} (${sug.reason})`);
-          actClickTile(sug.tile.id);
+          actClickTile(step.id);
 
-          // Wait for server response
-          let changed = false;
+          // Wait for server
           for (let w = 0; w < 30; w++) {
             await delay(100, 150);
             const st = document.getElementById('page-status');
-            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) { changed = true; break; }
+            if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
             const curRemaining = document.getElementById('remaining-count')?.textContent;
-            const curSlot = document.getElementById('slot-count')?.textContent;
-            if (curRemaining !== prevRemaining || curSlot !== prevSlot) { changed = true; break; }
-          }
-          if (!changed) {
-            // Server rejected this tile — mark as failed and retry
-            failedTiles.add(sug.tile.id);
-            Panel.showHint(`#${sug.tile.id} 不可点，重试...`);
+            if (curRemaining !== prevRemaining) break;
           }
         }
         break;
