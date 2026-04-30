@@ -84,10 +84,11 @@ const SolverPuzzle15 = (() => {
   }
 
   // IDA* depth-limited DFS with periodic yielding
-  async function idaSearch(board, size, g, bound, path, visited, bestNextBound, iterCounter) {
-    // Yield to event loop every ~5000 iterations to prevent "page unresponsive"
+  async function idaSearch(board, size, g, bound, path, visited, bestNextBound, iterCounter, deadline) {
+    // Yield to event loop frequently, and check deadline
     iterCounter.val++;
-    if (iterCounter.val % 5000 === 0) {
+    if (iterCounter.val % 1000 === 0) {
+      if (Date.now() > deadline) throw new Error('timeout');
       await new Promise(r => setTimeout(r, 0));
     }
 
@@ -104,7 +105,7 @@ const SolverPuzzle15 = (() => {
 
     for (const nb of neighbors) {
       const result = await idaSearch(nb.board, size, g + 1, bound,
-        [...path, { tile: nb.tile }], visited, bestNextBound, iterCounter);
+        [...path, { tile: nb.tile }], visited, bestNextBound, iterCounter, deadline);
       if (result) return result;
     }
     return null;
@@ -115,18 +116,24 @@ const SolverPuzzle15 = (() => {
     if (board.every((v, i) => v === goal[i])) return [];
 
     let bound = heuristic(board, size);
-    const MAX_BOUND = size <= 3 ? 30 : size === 4 ? 80 : 200;
+    const MAX_BOUND = size <= 3 ? 30 : size === 4 ? 80 : 300;
+    const DEADLINE = Date.now() + 30000; // 30s timeout
     const iterCounter = { val: 0 };
 
-    while (bound <= MAX_BOUND) {
-      const visited = new Map();
-      const bestNextBound = { val: Infinity };
-      const result = await idaSearch(board, size, 0, bound, [], visited, bestNextBound, iterCounter);
-      if (result) return result;
-      if (bestNextBound.val === Infinity) return null;
-      bound = Math.max(bound + 1, bestNextBound.val);
-      // Yield between bound iterations too
-      await new Promise(r => setTimeout(r, 0));
+    try {
+      while (bound <= MAX_BOUND) {
+        if (Date.now() > DEADLINE) return null;
+        const visited = new Map();
+        const bestNextBound = { val: Infinity };
+        const result = await idaSearch(board, size, 0, bound, [], visited, bestNextBound, iterCounter, DEADLINE);
+        if (result) return result;
+        if (bestNextBound.val === Infinity) return null;
+        bound = Math.max(bound + 1, bestNextBound.val);
+        await new Promise(r => setTimeout(r, 0));
+      }
+    } catch (e) {
+      if (e.message === 'timeout') return null;
+      throw e;
     }
     return null;
   }
