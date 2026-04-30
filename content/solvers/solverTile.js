@@ -89,8 +89,8 @@ const SolverTile = (() => {
       const unc = [];
       for (const id of rem) {
         const t = byId[id];
-        // Use game's is-covered class (most reliable) OR our z-index overlap check
-        if (t.isCovered) continue;
+        // Re-read is-covered from live DOM (updates after each server response)
+        if (t.el && t.el.classList.contains('is-covered')) continue;
         if (t.coveredBy.some(cid => rem.has(cid))) continue;
         unc.push(id);
       }
