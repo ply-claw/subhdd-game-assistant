@@ -1,15 +1,12 @@
 'use strict';
 
 // Sliding puzzle solver: reduce-and-conquer for 5×5, IDA* for ≤4×4.
-// Strategy: solve top row + left column → reduces to (N-1)×(N-1) sub-puzzle.
-// Each tile is placed with BFS, locking solved cells.
+// 5×5: A* places each tile of top row + left column → lock them.
+// 4×4 (size=4) → IDA* on the remaining unlocked cells.
 
 const SolverPuzzle15 = (() => {
 
   function boardToKey(b) { return b.join(','); }
-  function getGoal(size) {
-    const g = []; for (let i=1;i<size*size;i++) g.push(i); g.push(0); return g;
-  }
 
   function manhattan(board, size) {
     let d = 0;
@@ -33,13 +30,13 @@ const SolverPuzzle15 = (() => {
           if((v1-1)%size>(v2-1)%size) c+=2;
         }
       }
-    for (let c = 0; c < size; c++)
+    for (let cc = 0; cc < size; cc++)
       for (let r1 = 0; r1 < size; r1++) {
-        const v1 = board[r1*size+c]; if (v1===0) continue;
-        if ((v1-1)%size!==c) continue;
+        const v1 = board[r1*size+cc]; if (v1===0) continue;
+        if ((v1-1)%size!==cc) continue;
         for (let r2=r1+1;r2<size;r2++) {
-          const v2=board[r2*size+c]; if(v2===0) continue;
-          if((v2-1)%size!==c) continue;
+          const v2=board[r2*size+cc]; if(v2===0) continue;
+          if((v2-1)%size!==cc) continue;
           if(Math.floor((v1-1)/size)>Math.floor((v2-1)/size)) c+=2;
         }
       }
@@ -48,133 +45,118 @@ const SolverPuzzle15 = (() => {
 
   function heuristic(board, size) { return manhattan(board, size) + linearConflict(board, size); }
 
-  function getNeighbors(board, size) {
+  function getNeighbors(board, size, locked) {
     const z = board.indexOf(0), r = Math.floor(z/size), c = z%size;
     const n = []; const dirs=[[-1,0],[1,0],[0,-1],[0,1]];
     for (const [dr,dc] of dirs) {
       const nr=r+dr, nc=c+dc; if (nr<0||nr>=size||nc<0||nc>=size) continue;
-      const ni=nr*size+nc, nb=board.slice();
+      const ni=nr*size+nc;
+      if (locked && locked.has(ni)) continue; // can't swap with locked tile
+      const nb=board.slice();
       [nb[z],nb[ni]]=[nb[ni],nb[z]]; n.push({board:nb,tile:board[ni]});
     }
     return n;
   }
 
-  // ---- A*-guided search: move tile 'value' to position (tr, tc), keeping 'locked' cells fixed ----
-  function tileHeuristic(board, size, value, tr, tc) {
-    const idx = board.indexOf(value);
-    if (idx < 0) return 999;
-    const vr = Math.floor(idx / size), vc = idx % size;
-    return Math.abs(vr - tr) + Math.abs(vc - tc);
+  // ---- A* for placing a single tile ----
+  class MinHeap {
+    constructor() { this.d = []; }
+    push(v) { this.d.push(v); let i=this.d.length-1; while(i>0){const p=(i-1)>>1; if(this.d[p].f<=this.d[i].f)break;[this.d[p],this.d[i]]=[this.d[i],this.d[p]];i=p;} }
+    pop() { if(this.d.length<=1)return this.d.pop()||null; const t=this.d[0]; this.d[0]=this.d.pop(); let i=0; while(1){let s=i,l=i*2+1,r=i*2+2; if(l<this.d.length&&this.d[l].f<this.d[s].f)s=l; if(r<this.d.length&&this.d[r].f<this.d[s].f)s=r; if(s===i)break;[this.d[i],this.d[s]]=[this.d[s],this.d[i]];i=s;} return t; }
+    get size() { return this.d.length; }
   }
 
-  // Simple priority queue for A*
-  class MinHeap {
-    constructor() { this.data = []; }
-    push(item) {
-      this.data.push(item);
-      let i = this.data.length - 1;
-      while (i > 0) {
-        const p = (i - 1) >> 1;
-        if (this.data[p].f <= this.data[i].f) break;
-        [this.data[p], this.data[i]] = [this.data[i], this.data[p]];
-        i = p;
-      }
-    }
-    pop() {
-      if (this.data.length === 1) return this.data.pop();
-      const top = this.data[0];
-      this.data[0] = this.data.pop();
-      let i = 0;
-      while (true) {
-        let smallest = i, l = i*2+1, r = i*2+2;
-        if (l < this.data.length && this.data[l].f < this.data[smallest].f) smallest = l;
-        if (r < this.data.length && this.data[r].f < this.data[smallest].f) smallest = r;
-        if (smallest === i) break;
-        [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
-        i = smallest;
-      }
-      return top;
-    }
-    get size() { return this.data.length; }
+  function tileDistance(board, value, tr, tc) {
+    const idx = board.indexOf(value);
+    if (idx < 0) return 999;
+    return Math.abs(Math.floor(idx / Math.round(Math.sqrt(board.length))) - tr) +
+           Math.abs((idx % Math.round(Math.sqrt(board.length))) - tc);
   }
 
   async function placeTile(board, size, value, tr, tc, locked, deadline) {
+    const goalIdx = tr*size+tc;
+    if (board[goalIdx] === value) return [];
+
     const startKey = boardToKey(board);
-    const startH = tileHeuristic(board, size, value, tr, tc);
+    // Focused heuristic: just the target tile's distance to goal
+    const startH = tileDistance(board, value, tr, tc);
     const heap = new MinHeap();
     heap.push({ board, g: 0, f: startH, path: [] });
     const bestG = new Map([[startKey, 0]]);
     const MAX = 200000;
 
     for (let iter = 0; heap.size > 0 && iter < MAX; iter++) {
-      if (iter % 1000 === 0) {
+      if (iter % 2000 === 0) {
         if (Date.now() > deadline) return null;
         await new Promise(r => setTimeout(r, 0));
       }
-
       const cur = heap.pop();
-      const curBoard = cur.board;
+      if (!cur) return null;
+      if (cur.board[goalIdx] === value) return cur.path;
 
-      if (curBoard[tr*size+tc] === value) {
-        let ok = true;
-        for (const li of locked) {
-          if (curBoard[li] !== board[li]) { ok = false; break; }
-        }
-        if (ok) return cur.path;
-      }
-
-      const neighbors = getNeighbors(curBoard, size);
+      const neighbors = getNeighbors(cur.board, size, locked);
       for (const nb of neighbors) {
-        const tileIdx = curBoard.indexOf(nb.tile);
-        if (locked.has(tileIdx)) continue;
         const newG = cur.g + 1;
         const key = boardToKey(nb.board);
         if (bestG.has(key) && bestG.get(key) <= newG) continue;
         bestG.set(key, newG);
-        const h = tileHeuristic(nb.board, size, value, tr, tc);
+        const h = tileDistance(nb.board, value, tr, tc);
         heap.push({ board: nb.board, g: newG, f: newG + h, path: [...cur.path, { tile: nb.tile }] });
       }
     }
     return null;
   }
 
-  // ---- IDA* for ≤4×4 (async with yielding) ----
-  async function idaSearch(board, size, g, bound, path, visited, bestNextBound, iterCounter, deadline) {
+  // ---- IDA* for ≤4×4 (async) ----
+  async function idaSearch(board, size, g, bound, path, visited, bestNextBound, iterCounter, deadline, locked) {
     iterCounter.val++;
     if (iterCounter.val % 2000 === 0) {
       if (Date.now() > deadline) throw new Error('timeout');
       await new Promise(r => setTimeout(r, 0));
     }
-    const f = g + heuristic(board, size);
+    const f = g + (locked ? heuristic(board, size) : heuristic(board, size));
     if (f > bound) { bestNextBound.val = Math.min(bestNextBound.val, f); return null; }
-    const goal = getGoal(size);
-    if (board.every((v, i) => v === goal[i])) return path;
+    // Check goal: tiles at correct positions
+    let done = true;
+    for (let i = 0; i < size*size; i++) {
+      const expected = i < size*size-1 ? i+1 : 0;
+      if (board[i] !== expected) { done = false; break; }
+    }
+    if (done) return path;
+
     const key = boardToKey(board);
     if (visited.has(key) && visited.get(key) <= g) return null;
     visited.set(key, g);
-    const neighbors = getNeighbors(board, size);
+
+    const neighbors = getNeighbors(board, size, locked);
     neighbors.sort((a, b) => heuristic(a.board, size) - heuristic(b.board, size));
     for (const nb of neighbors) {
       const r = await idaSearch(nb.board, size, g+1, bound,
-        [...path, {tile:nb.tile}], visited, bestNextBound, iterCounter, deadline);
+        [...path, {tile:nb.tile}], visited, bestNextBound, iterCounter, deadline, locked);
       if (r) return r;
     }
     return null;
   }
 
-  async function solveIDA(board, size) {
-    const goal = getGoal(size);
-    if (board.every((v,i)=>v===goal[i])) return [];
+  async function solveIDA(board, size, locked) {
+    // Check if already solved
+    let done = true;
+    for (let i = 0; i < size*size; i++) {
+      const expected = i < size*size-1 ? i+1 : 0;
+      if (board[i] !== expected) { done = false; break; }
+    }
+    if (done) return [];
+
     let bound = heuristic(board, size);
-    const MAX = size<=3?30:80;
+    const MAX = 80;
     const DEADLINE = Date.now() + 15000;
     const iter = {val:0};
     try {
       while (bound <= MAX) {
-        if (Date.now()>DEADLINE) return null;
+        if (Date.now() > DEADLINE) return null;
         const visited = new Map();
         const nxt = {val:Infinity};
-        const r = await idaSearch(board, size, 0, bound, [], visited, nxt, iter, DEADLINE);
+        const r = await idaSearch(board, size, 0, bound, [], visited, nxt, iter, DEADLINE, locked || null);
         if (r) return r;
         if (nxt.val===Infinity) return null;
         bound = Math.max(bound+1, nxt.val);
@@ -184,110 +166,77 @@ const SolverPuzzle15 = (() => {
     return null;
   }
 
-  // ---- Main solve: reduce-and-conquer ----
+  // ---- Main solve ----
   async function solve(board, size) {
-    const goal = getGoal(size);
-    if (board.every((v,i)=>v===goal[i])) return [];
-
-    let curBoard = board.slice();
-    const allMoves = [];
-
-    // For 5×5: solve top row + left column → 4×4 sub-puzzle → IDA*
-    if (size >= 5) {
-      const locked = new Set();
-      const DEADLINE = Date.now() + 60000; // 60s total for 5x5
-
-      // Solve top row: tiles 1 to size
-      for (let c = 0; c < size; c++) {
-        if (Date.now() > DEADLINE) return null;
-        const value = c + 1;
-        const tr = 0, tc = c;
-        if (curBoard[tr*size+tc] === value) {
-          locked.add(tr*size+tc);
-          continue;
-        }
-        const path = await placeTile(curBoard, size, value, tr, tc, locked, DEADLINE);
-        if (!path) return null;
-        for (const step of path) {
-          const z = curBoard.indexOf(0);
-          const tileIdx = curBoard.indexOf(step.tile);
-          [curBoard[z], curBoard[tileIdx]] = [curBoard[tileIdx], curBoard[z]];
-          allMoves.push(step);
-        }
-        locked.add(tr*size+tc);
-      }
-
-      // Solve left column: tiles size+1, 2*size+1, ...
-      for (let r = 1; r < size; r++) {
-        if (Date.now() > DEADLINE) return null;
-        const value = r * size + 1;
-        const tr = r, tc = 0;
-        if (curBoard[tr*size+tc] === value) {
-          locked.add(tr*size+tc);
-          continue;
-        }
-        const path = await placeTile(curBoard, size, value, tr, tc, locked, DEADLINE);
-        if (!path) return null;
-        for (const step of path) {
-          const z = curBoard.indexOf(0);
-          const tileIdx = curBoard.indexOf(step.tile);
-          [curBoard[z], curBoard[tileIdx]] = [curBoard[tileIdx], curBoard[z]];
-          allMoves.push(step);
-        }
-        locked.add(tr*size+tc);
-      }
-
-      // Now extract the (size-1)×(size-1) sub-puzzle
-      const subSize = size - 1;
-      const subBoard = [];
-      for (let r = 1; r < size; r++)
-        for (let c = 1; c < size; c++)
-          subBoard.push(curBoard[r*size+c]);
-
-      // Remap to 1..(subSize^2-1), 0
-      // The sub-puzzle's "correct" values are offset
-      const offset = size + 1; // first tile of sub-puzzle = size+1+1? Actually tile at (1,1) = 1*size+2
-      // Actually for 5x5: top row (1-5) and left col (6,11,16,21) are solved.
-      // Remaining tiles: 7,8,9,10, 12,13,14,15, 17,18,19,20, 22,23,24,25 → plus 0.
-      // In a 4x4 format, the goal is 7→1, 8→2, ..., 25→16, 0→0.
-      // The sub-board values are the original values. For IDA*, the goal is:
-      const subGoal = getGoal(subSize);
-      // Map: original value → sub-puzzle value
-      const valMap = {};
-      const subGoalVals = []; // sub-puzzle goal values at each sub-position
-      for (let r = 1; r < size; r++) {
-        for (let c = 1; c < size; c++) {
-          const origVal = r * size + c + 1; // correct value at (r,c)
-          const subIdx = (r-1) * subSize + (c-1);
-          if (origVal <= size*size) valMap[origVal] = subGoal[subIdx];
-        }
-      }
-      valMap[0] = 0;
-
-      // Remap subBoard values
-      const mappedSubBoard = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
-
-      // Solve sub-puzzle
-      const subMoves = await solveIDA(mappedSubBoard, subSize);
-      if (!subMoves) return null;
-
-      // Map sub-moves back to original board coordinates
-      for (const sm of subMoves) {
-        // sm.tile is the sub-puzzle tile value. Find original value.
-        const subTile = sm.tile;
-        let origTile = null;
-        for (const [ov, sv] of Object.entries(valMap)) {
-          if (sv === subTile) { origTile = parseInt(ov); break; }
-        }
-        if (origTile === null) return null;
-        allMoves.push({ tile: origTile });
-      }
-
-      return allMoves;
+    // 3×3 and 4×4: IDA* directly
+    if (size <= 4) {
+      return await solveIDA(board, size);
     }
 
-    // For 3×3 and 4×4: use IDA* directly
-    return await solveIDA(curBoard, size);
+    // 5×5: reduce-and-conquer
+    let curBoard = board.slice();
+    const allMoves = [];
+    const locked = new Set();
+    const DEADLINE = Date.now() + 120000;
+
+    // Place ALL top row tiles 1..5
+    for (let c = 0; c < size; c++) {
+      if (Date.now() > DEADLINE) return null;
+      const value = c + 1;
+      const path = await placeTile(curBoard, size, value, 0, c, locked, DEADLINE);
+      if (!path) return null;
+      for (const step of path) {
+        const z = curBoard.indexOf(0), ti = curBoard.indexOf(step.tile);
+        [curBoard[z], curBoard[ti]] = [curBoard[ti], curBoard[z]];
+        allMoves.push(step);
+      }
+      locked.add(c);
+    }
+
+    // Place ALL left column tiles (size+1), (2*size+1), ...
+    for (let r = 1; r < size; r++) {
+      if (Date.now() > DEADLINE) return null;
+      const value = r * size + 1;
+      const path = await placeTile(curBoard, size, value, r, 0, locked, DEADLINE);
+      if (!path) return null;
+      for (const step of path) {
+        const z = curBoard.indexOf(0), ti = curBoard.indexOf(step.tile);
+        [curBoard[z], curBoard[ti]] = [curBoard[ti], curBoard[z]];
+        allMoves.push(step);
+      }
+      locked.add(r * size);
+    }
+
+    // Remaining 4×4 sub-puzzle: solve with IDA*
+    const subSize = size - 1;
+    const subBoard = [];
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        subBoard.push(curBoard[r*size + c]);
+
+    // Remap sub-board values: original value → 1..subSize²
+    const valMap = {0: 0};
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++) {
+        const ov = r * size + c + 1;
+        const si = (r-1) * subSize + (c-1);
+        valMap[ov] = si + 1;
+      }
+
+    const mapped = subBoard.map(v => (valMap[v] !== undefined ? valMap[v] : 0));
+    const subMoves = await solveIDA(mapped, subSize);
+    if (!subMoves) return null;
+
+    // Map back
+    const vToOv = {};
+    for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
+    for (const sm of subMoves) {
+      const origTile = vToOv[sm.tile];
+      if (origTile === undefined) return null;
+      allMoves.push({ tile: origTile });
+    }
+
+    return allMoves;
   }
 
   return { solve };
