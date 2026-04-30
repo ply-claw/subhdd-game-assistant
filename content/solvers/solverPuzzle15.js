@@ -59,22 +59,60 @@ const SolverPuzzle15 = (() => {
     return n;
   }
 
-  // ---- BFS: move tile 'value' to position (tr, tc), keeping 'locked' cells fixed ----
-  async function bfsPlaceTile(board, size, value, tr, tc, locked, deadline) {
-    const startKey = boardToKey(board);
-    const queue = [{ board, path: [] }];
-    const visited = new Set([startKey]);
-    let head = 0; // index-based queue (avoid O(n) shift)
-    const MAX = 500000;
+  // ---- A*-guided search: move tile 'value' to position (tr, tc), keeping 'locked' cells fixed ----
+  function tileHeuristic(board, size, value, tr, tc) {
+    const idx = board.indexOf(value);
+    if (idx < 0) return 999;
+    const vr = Math.floor(idx / size), vc = idx % size;
+    return Math.abs(vr - tr) + Math.abs(vc - tc);
+  }
 
-    for (let iter = 0; head < queue.length && iter < MAX; iter++, head++) {
-      // Yield periodically
-      if (iter % 2000 === 0) {
+  // Simple priority queue for A*
+  class MinHeap {
+    constructor() { this.data = []; }
+    push(item) {
+      this.data.push(item);
+      let i = this.data.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (this.data[p].f <= this.data[i].f) break;
+        [this.data[p], this.data[i]] = [this.data[i], this.data[p]];
+        i = p;
+      }
+    }
+    pop() {
+      if (this.data.length === 1) return this.data.pop();
+      const top = this.data[0];
+      this.data[0] = this.data.pop();
+      let i = 0;
+      while (true) {
+        let smallest = i, l = i*2+1, r = i*2+2;
+        if (l < this.data.length && this.data[l].f < this.data[smallest].f) smallest = l;
+        if (r < this.data.length && this.data[r].f < this.data[smallest].f) smallest = r;
+        if (smallest === i) break;
+        [this.data[i], this.data[smallest]] = [this.data[smallest], this.data[i]];
+        i = smallest;
+      }
+      return top;
+    }
+    get size() { return this.data.length; }
+  }
+
+  async function placeTile(board, size, value, tr, tc, locked, deadline) {
+    const startKey = boardToKey(board);
+    const startH = tileHeuristic(board, size, value, tr, tc);
+    const heap = new MinHeap();
+    heap.push({ board, g: 0, f: startH, path: [] });
+    const bestG = new Map([[startKey, 0]]);
+    const MAX = 200000;
+
+    for (let iter = 0; heap.size > 0 && iter < MAX; iter++) {
+      if (iter % 1000 === 0) {
         if (Date.now() > deadline) return null;
         await new Promise(r => setTimeout(r, 0));
       }
 
-      const cur = queue[head];
+      const cur = heap.pop();
       const curBoard = cur.board;
 
       if (curBoard[tr*size+tc] === value) {
@@ -89,10 +127,12 @@ const SolverPuzzle15 = (() => {
       for (const nb of neighbors) {
         const tileIdx = curBoard.indexOf(nb.tile);
         if (locked.has(tileIdx)) continue;
+        const newG = cur.g + 1;
         const key = boardToKey(nb.board);
-        if (visited.has(key)) continue;
-        visited.add(key);
-        queue.push({ board: nb.board, path: [...cur.path, { tile: nb.tile }] });
+        if (bestG.has(key) && bestG.get(key) <= newG) continue;
+        bestG.set(key, newG);
+        const h = tileHeuristic(nb.board, size, value, tr, tc);
+        heap.push({ board: nb.board, g: newG, f: newG + h, path: [...cur.path, { tile: nb.tile }] });
       }
     }
     return null;
@@ -166,7 +206,7 @@ const SolverPuzzle15 = (() => {
           locked.add(tr*size+tc);
           continue;
         }
-        const path = await bfsPlaceTile(curBoard, size, value, tr, tc, locked, DEADLINE);
+        const path = await placeTile(curBoard, size, value, tr, tc, locked, DEADLINE);
         if (!path) return null;
         for (const step of path) {
           const z = curBoard.indexOf(0);
@@ -186,7 +226,7 @@ const SolverPuzzle15 = (() => {
           locked.add(tr*size+tc);
           continue;
         }
-        const path = await bfsPlaceTile(curBoard, size, value, tr, tc, locked, DEADLINE);
+        const path = await placeTile(curBoard, size, value, tr, tc, locked, DEADLINE);
         if (!path) return null;
         for (const step of path) {
           const z = curBoard.indexOf(0);
