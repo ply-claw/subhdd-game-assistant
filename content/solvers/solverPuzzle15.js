@@ -318,9 +318,10 @@ const SolverPuzzle15 = (() => {
         const moves = placeTileClassic(curBoard, size, value, r, 0, locked);
         if (!moves) { console.error('[p15] FAIL last col tile', value); return null; }
         allMoves.push(...moves);
-        if (curBoard[(r - 1) * size] !== r * size) { // neighbor wrong
+        const neighborVal = (r - 1) * size + 1;
+        if (curBoard[(r - 1) * size] !== neighborVal) {
           locked.add(r * size);
-          const nmoves = placeTileClassic(curBoard, size, r * size, r - 1, 0, locked);
+          const nmoves = placeTileClassic(curBoard, size, neighborVal, r - 1, 0, locked);
           if (nmoves) allMoves.push(...nmoves);
         }
         locked.add((r - 1) * size);
