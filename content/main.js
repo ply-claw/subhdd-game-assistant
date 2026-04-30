@@ -501,6 +501,7 @@ async function startAutoPlay() {
         if (!s.hasActiveSession) break;
         const sol = SolverSudoku.solve(s.session.givens);
         if (!sol) { Panel.showHint('无法求解'); break; }
+        renderSudokuGrid(sol, s.session.givens);
         for (let i = 0; i < 81; i++) {
           if (autoPlayStoppedFlag) break;
           if (s.session.givens[i] !== 0) continue;
