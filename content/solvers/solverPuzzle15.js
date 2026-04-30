@@ -116,7 +116,7 @@ const SolverPuzzle15 = (() => {
       if (board[goalIdx] === value) return allMoves;
 
       const tileIdx = board.indexOf(value);
-      if (tileIdx < 0) return null;
+      if (tileIdx < 0) { console.error('[p15] tile', value, 'not found on board'); return null; }
       const tileR = Math.floor(tileIdx / size), tileC = tileIdx % size;
 
       // Determine push direction: which way to push the tile toward goal
@@ -152,23 +152,20 @@ const SolverPuzzle15 = (() => {
       const etR = tileR + pushDR;
       const etC = tileC + pushDC;
 
-      // If push target is out of bounds or locked, we need a different approach
+      // If push target is out of bounds or locked, try alternative direction
       if (etR < 0 || etR >= size || etC < 0 || etC >= size || (locked && locked.has(etR*size+etC))) {
-        // Try all 4 directions for a valid push
         const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
         let found = false;
         for (const [dr, dc] of dirs) {
           const nr = tileR+dr, nc = tileC+dc;
           if (nr>=0 && nr<size && nc>=0 && nc<size && !(locked && locked.has(nr*size+nc))) {
-            // Move empty to this position and push
-            const path = getEmptyPath(board, size, nr, nc, locked);
+            const tileLock = new Set(locked); tileLock.add(tileIdx);
+            const path = getEmptyPath(board, size, nr, nc, tileLock);
             if (path) {
               const moves = executeEmptyPath(board, size, path, locked);
               if (moves) allMoves.push(...moves);
-              // Now swap empty with tile to push it
               const curZ = board.indexOf(0);
-              const pushIdx = nr*size+nc;
-              if (curZ === pushIdx) {
+              if (curZ === nr*size+nc) {
                 [board[curZ], board[tileIdx]] = [board[tileIdx], board[curZ]];
                 allMoves.push({ tile: value });
               }
@@ -177,32 +174,13 @@ const SolverPuzzle15 = (() => {
             }
           }
         }
-        if (!found) return null; // stuck
+        if (!found) { console.error('[p15] no valid push dir for tile', value, 'at', tileR, tileC); return null; }
       } else {
-        // Move empty to push position, then push tile
-        const path = getEmptyPath(board, size, etR, etC, locked);
-        if (!path) {
-          // Can't reach the push position directly. Try an alternative approach:
-          // Move the tile away from the edge first
-          const altPath = getEmptyPath(board, size, tileR, tileC, locked);
-          if (altPath) {
-            const moves = executeEmptyPath(board, size, altPath, locked);
-            if (moves) allMoves.push(...moves);
-            // Move tile one step away from edge
-            const pushAwayR = tileR + (tileR === 0 ? 1 : tileR === size-1 ? -1 : 0);
-            const pushAwayC = tileC + (tileC === 0 ? 1 : tileC === size-1 ? -1 : 0);
-            if (pushAwayR !== tileR || pushAwayC !== tileC) {
-              const curZ = board.indexOf(0);
-              const awayIdx = pushAwayR*size + pushAwayC;
-              if (curZ === tileIdx) {
-                [board[curZ], board[awayIdx]] = [board[awayIdx], board[curZ]];
-                allMoves.push({ tile: board[awayIdx] });
-              }
-            }
-            continue;
-          }
-          return null;
-        }
+        // Lock target tile position so BFS doesn't displace it
+        const tileLock = new Set(locked);
+        tileLock.add(tileIdx);
+        const path = getEmptyPath(board, size, etR, etC, tileLock);
+        if (!path) { console.error('[p15] no path for empty to', etR, etC, 'locked:', [...tileLock]); return null; }
         const moves = executeEmptyPath(board, size, path, locked);
         if (!moves) return null;
         allMoves.push(...moves);
@@ -216,7 +194,7 @@ const SolverPuzzle15 = (() => {
         }
       }
     }
-    return null; // hit max steps
+    console.error('[p15] MAX_STEPS for tile', value); return null;
   }
 
   // ---- IDA* for ≤4×4 ----
@@ -291,7 +269,7 @@ const SolverPuzzle15 = (() => {
       const goalIdx = c;
       if (curBoard[goalIdx] !== value) {
         const moves = placeTileClassic(curBoard, size, value, 0, c, locked);
-        if (!moves) return null;
+        if (!moves) { console.error('[p15] FAIL row tile', value, 'board:', curBoard.join(',')); return null; }
         allMoves.push(...moves);
       }
       locked.add(c);
@@ -303,7 +281,7 @@ const SolverPuzzle15 = (() => {
       const goalIdx = r * size;
       if (curBoard[goalIdx] !== value) {
         const moves = placeTileClassic(curBoard, size, value, r, 0, locked);
-        if (!moves) return null;
+        if (!moves) { console.error('[p15] FAIL col tile', value, 'board:', curBoard.join(',')); return null; }
         allMoves.push(...moves);
       }
       locked.add(r * size);
