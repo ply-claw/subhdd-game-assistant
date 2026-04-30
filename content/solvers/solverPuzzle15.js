@@ -153,10 +153,10 @@ const SolverPuzzle15 = (() => {
     if (goalCheck(board)) return [];
     const startKey = boardToKey(board);
     const heap = new Heap();
-    heap.push({ board, f: h(board), path: [] }); // greedy: f = heuristic only
-    const visited = new Set([startKey]);
+    heap.push({ board, g: 0, f: h(board) * 2, path: [] }); // w=2 weighted A*
+    const bestG = new Map([[startKey, 0]]);
     let iter = 0;
-    const MAX = 5000000;
+    const MAX = 4000000;
 
     if (prog) { prog.maxBound = MAX; prog.iter = 0; }
 
@@ -173,10 +173,11 @@ const SolverPuzzle15 = (() => {
 
       const ns = getNeighbors(cur.board, size, locked);
       for (const nb of ns) {
+        const newG = cur.g + 1;
         const key = boardToKey(nb.board);
-        if (visited.has(key)) continue;
-        visited.add(key);
-        heap.push({ board: nb.board, f: h(nb.board), path: [...cur.path, { tile: nb.tile }] });
+        if (bestG.has(key) && bestG.get(key) <= newG) continue;
+        bestG.set(key, newG);
+        heap.push({ board: nb.board, g: newG, f: newG + h(nb.board) * 2, path: [...cur.path, { tile: nb.tile }] });
       }
     }
     return null;
