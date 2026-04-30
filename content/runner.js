@@ -195,7 +195,7 @@ const Runner = (() => {
             const r = Math.round((top - pad) / (cellSize + gap));
             if (r >= 0 && r < size && c >= 0 && c < size) board[r * size + c] = v || 0;
           });
-          const sol = SolverPuzzle15.solve(board, size);
+          const sol = await SolverPuzzle15.solve(board, size);
           if (!sol || sol.length === 0) return 'no-solution';
           for (const step of sol) {
             if (s.stopRequested) return 'stopped';

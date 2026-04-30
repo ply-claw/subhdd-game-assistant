@@ -385,7 +385,7 @@ async function showHint() {
       Panel.showHint('正在解算...');
       await new Promise(r => setTimeout(r, 50));
       const t0 = Date.now();
-      const sol = SolverPuzzle15.solve(sess.board, sess.size);
+      const sol = await SolverPuzzle15.solve(sess.board, sess.size);
       const secs = ((Date.now() - t0) / 1000).toFixed(1);
       if (sol && el) {
         el.innerHTML = sol.slice(0, 30).map((s, i) =>
@@ -454,7 +454,7 @@ async function startAutoPlay() {
         Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
         await new Promise(r => setTimeout(r, 50));
         const t0 = Date.now();
-        let sol = SolverPuzzle15.solve(s.session.board, s.session.size);
+        let sol = await SolverPuzzle15.solve(s.session.board, s.session.size);
         const secs = ((Date.now() - t0) / 1000).toFixed(1);
         if (!sol) { Panel.showHint(`无法求解 (耗时 ${secs}s)`); Panel.setStatus('进行中', 'ready'); break; }
         Panel.showHint(`解算完成 ${secs}s · 共 ${sol.length} 步`);
