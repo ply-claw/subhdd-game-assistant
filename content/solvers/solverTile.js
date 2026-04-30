@@ -76,7 +76,12 @@ const SolverTile = (() => {
   // ---- Greedy solver with shallow backtracking ----
   function solve() {
     const { tiles, byId } = buildGraph();
-    if (tiles.length === 0) return null;
+    console.log('[tile] buildGraph:', tiles.length, 'tiles, byId keys:', Object.keys(byId).length);
+    if (tiles.length === 0) { console.error('[tile] NO TILES — is the game started?'); return null; }
+    // Check first few tiles
+    console.log('[tile] first tile:', JSON.stringify({ id: tiles[0]?.id, pattern: tiles[0]?.pattern, covers: tiles[0]?.covers?.length, coveredBy: tiles[0]?.coveredBy?.length }));
+    const uncovered = getUncovered(tiles);
+    console.log('[tile] uncovered count:', uncovered.length);
 
     let remaining = new Set(tiles.map(t => t.id));
     let slot = [];
@@ -163,7 +168,7 @@ const SolverTile = (() => {
         }
       }
 
-      if (!found) return null; // stuck
+      if (!found) { console.error('[tile] stuck at step', step, 'remaining:', remaining.size, 'slot:', slot.length); return null; }
     }
 
     return solution.map(id => ({ id, pattern: patName(byId[id].pattern) }));
