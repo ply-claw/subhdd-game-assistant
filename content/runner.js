@@ -166,8 +166,17 @@ const Runner = (() => {
           });
           const best = Solver2048.getBestMove(board, s.depth);
           if (!best || !best.direction) return 'stuck';
+          const prevMoves = parseInt(document.getElementById('hud-moves')?.textContent) || 0;
           const km = {up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'};
           document.dispatchEvent(new KeyboardEvent('keydown', {key: km[best.direction], bubbles: true}));
+          // Wait for server to process
+          for (let w = 0; w < 30; w++) {
+            await delay();
+            const curMoves = parseInt(document.getElementById('hud-moves')?.textContent) || 0;
+            if (curMoves !== prevMoves) break;
+            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+            if (document.getElementById('page-status')?.classList.contains('is-loss')) break;
+          }
           break;
         }
         case 'puzzle15': {

@@ -166,6 +166,20 @@ function actMove(direction) {
   document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
 }
 
+// Wait for 2048 board to update after a move (server round-trip)
+async function wait2048Update(prevMoveCount) {
+  for (let w = 0; w < 50; w++) {
+    await delay(100, 150);
+    const movesEl = document.getElementById('hud-moves');
+    const curMoves = parseInt(movesEl?.textContent) || 0;
+    // Board updated if move count changed, or game ended
+    if (curMoves !== prevMoveCount) return true;
+    const status = document.getElementById('page-status');
+    if (status && (status.classList.contains('is-win') || status.classList.contains('is-loss'))) return true;
+  }
+  return false; // timeout
+}
+
 function actFlip(index) {
   const card = document.querySelector(`.mem-card[data-index="${index}"]`);
   if (card) card.click();
@@ -419,32 +433,16 @@ async function startAutoPlay() {
       case 'puzzle2048': {
         const depthEl = document.getElementById('ga-depth');
         const depth = depthEl ? Number(depthEl.value) || 3 : 3;
-        let lastDir = '';
-        let stuckCount = 0;
         while (!autoPlayStoppedFlag) {
-          await delay(300, 800);
           const s = readGameState();
           if (!s.hasActiveSession || s.session.won || s.session.game_over) break;
+          const prevMoves = s.session.move_count;
           const best = Solver2048.getBestMove(s.session.board, depth);
           if (!best || !best.direction) break;
-          // Detect stuck: same direction repeated without effect
-          if (best.direction === lastDir) {
-            stuckCount++;
-            if (stuckCount > 3) {
-              console.log('[GA] stuck, trying all directions');
-              const dirs = ['up','down','left','right'];
-              for (const d of dirs) {
-                if (d !== lastDir) {
-                  actMove(d); await delay(200, 400);
-                  break;
-                }
-              }
-              stuckCount = 0;
-            }
-          } else { stuckCount = 0; }
-          lastDir = best.direction;
           Panel.showHint({up:'↑',down:'↓',left:'←',right:'→'}[best.direction]||best.direction);
           actMove(best.direction);
+          // Wait for server to process and board to update
+          await wait2048Update(prevMoves);
         }
         break;
       }

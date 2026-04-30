@@ -60,23 +60,24 @@ const SolverPuzzle15 = (() => {
   }
 
   // ---- BFS: move tile 'value' to position (tr, tc), keeping 'locked' cells fixed ----
-  function bfsPlaceTile(board, size, value, tr, tc, locked) {
-    // Locked: Set of indices that cannot be moved
+  async function bfsPlaceTile(board, size, value, tr, tc, locked, deadline) {
     const startKey = boardToKey(board);
-    const startZ = board.indexOf(0);
-    // Goal: tile 'value' at (tr,tc), empty can be anywhere, locked cells unchanged
     const queue = [{ board, path: [] }];
     const visited = new Set([startKey]);
-    const MAX = 500000; let iter = 0;
+    let head = 0; // index-based queue (avoid O(n) shift)
+    const MAX = 500000;
 
-    while (queue.length > 0 && iter < MAX) {
-      iter++;
-      const cur = queue.shift();
+    for (let iter = 0; head < queue.length && iter < MAX; iter++, head++) {
+      // Yield periodically
+      if (iter % 2000 === 0) {
+        if (Date.now() > deadline) return null;
+        await new Promise(r => setTimeout(r, 0));
+      }
+
+      const cur = queue[head];
       const curBoard = cur.board;
 
-      // Check if tile is at goal
       if (curBoard[tr*size+tc] === value) {
-        // Also verify locked cells are intact
         let ok = true;
         for (const li of locked) {
           if (curBoard[li] !== board[li]) { ok = false; break; }
@@ -86,15 +87,8 @@ const SolverPuzzle15 = (() => {
 
       const neighbors = getNeighbors(curBoard, size);
       for (const nb of neighbors) {
-        // Don't move a locked tile
-        const movedIdx = curBoard.indexOf(0);
-        const swappedIdx = nb.board.indexOf(0) !== movedIdx ?
-          (curBoard.indexOf(nb.tile) !== -1 ? curBoard.indexOf(nb.tile) : -1) : -1;
-        // Simpler check: the swapped-out position is where the empty was
-        // Actually, just check: the tile that moved (nb.tile) — is it locked?
         const tileIdx = curBoard.indexOf(nb.tile);
         if (locked.has(tileIdx)) continue;
-
         const key = boardToKey(nb.board);
         if (visited.has(key)) continue;
         visited.add(key);
@@ -160,21 +154,21 @@ const SolverPuzzle15 = (() => {
 
     // For 5×5: solve top row + left column → 4×4 sub-puzzle → IDA*
     if (size >= 5) {
-      // Solve top row tiles 1..size (excluding last if we want, but include all)
       const locked = new Set();
+      const DEADLINE = Date.now() + 60000; // 60s total for 5x5
 
       // Solve top row: tiles 1 to size
       for (let c = 0; c < size; c++) {
+        if (Date.now() > DEADLINE) return null;
         const value = c + 1;
         const tr = 0, tc = c;
         if (curBoard[tr*size+tc] === value) {
           locked.add(tr*size+tc);
           continue;
         }
-        const path = bfsPlaceTile(curBoard, size, value, tr, tc, locked);
-        if (!path) return null; // BFS failed
+        const path = await bfsPlaceTile(curBoard, size, value, tr, tc, locked, DEADLINE);
+        if (!path) return null;
         for (const step of path) {
-          // Execute move
           const z = curBoard.indexOf(0);
           const tileIdx = curBoard.indexOf(step.tile);
           [curBoard[z], curBoard[tileIdx]] = [curBoard[tileIdx], curBoard[z]];
@@ -183,15 +177,16 @@ const SolverPuzzle15 = (() => {
         locked.add(tr*size+tc);
       }
 
-      // Solve left column: tiles size+1, 2*size+1, ... (excluding row 0 which is locked)
+      // Solve left column: tiles size+1, 2*size+1, ...
       for (let r = 1; r < size; r++) {
+        if (Date.now() > DEADLINE) return null;
         const value = r * size + 1;
         const tr = r, tc = 0;
         if (curBoard[tr*size+tc] === value) {
           locked.add(tr*size+tc);
           continue;
         }
-        const path = bfsPlaceTile(curBoard, size, value, tr, tc, locked);
+        const path = await bfsPlaceTile(curBoard, size, value, tr, tc, locked, DEADLINE);
         if (!path) return null;
         for (const step of path) {
           const z = curBoard.indexOf(0);
