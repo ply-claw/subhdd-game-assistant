@@ -670,28 +670,22 @@ async function startAutoPlay() {
         break;
       }
       case 'tile': {
-        // Phase 1: compute solution
-        Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
-        const el = document.getElementById('ga-panel-body');
-        await new Promise(r => setTimeout(r, 50));
-        const t0 = Date.now();
-        const solution = SolverTile.solve();
-        const secs = ((Date.now() - t0) / 1000).toFixed(1);
-        if (!solution) { Panel.showHint(`无解 (耗时 ${secs}s)`); Panel.setStatus('无解', 'loss'); break; }
-        Panel.showHint(`解算完成 ${secs}s · ${solution.length} 步`);
+        while (!autoPlayStoppedFlag) {
+          await delay(300, 600);
+          const st = document.getElementById('page-status');
+          if (st && st.classList.contains('is-win')) { Panel.setStatus('通关!', 'win'); break; }
+          if (st && st.classList.contains('is-loss')) { Panel.setStatus('失败', 'loss'); break; }
 
-        // Phase 2: execute step by step
-        for (let i = 0; i < solution.length; i++) {
-          if (autoPlayStoppedFlag) break;
-          const step = solution[i];
-          Panel.showHint(`[${i+1}/${solution.length}] #${step.id} ${step.pattern}`);
+          const sug = SolverTile.suggestNext();
+          if (!sug) { Panel.setStatus('无可用方块', 'loss'); break; }
+
           const prevRemaining = document.getElementById('remaining-count')?.textContent;
-          actClickTile(step.id);
+          Panel.showHint(`#${sug.tile.id} ${sug.tile.pattern} (${sug.reason})`);
+          actClickTile(sug.tile.id);
 
           // Wait for server
           for (let w = 0; w < 30; w++) {
             await delay(100, 150);
-            const st = document.getElementById('page-status');
             if (st && (st.classList.contains('is-win') || st.classList.contains('is-loss'))) break;
             const curRemaining = document.getElementById('remaining-count')?.textContent;
             if (curRemaining !== prevRemaining) break;
