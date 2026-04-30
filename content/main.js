@@ -492,17 +492,24 @@ async function startAutoPlay() {
       case 'puzzle2048': {
         const depthEl = document.getElementById('ga-depth');
         const depth = depthEl ? Number(depthEl.value) || 3 : 3;
+        const startTime = Date.now();
+        const timer = setInterval(() => {
+          const hEl = document.getElementById('ga-hint');
+          if (hEl) hEl.textContent = `⏱ ${((Date.now()-startTime)/1000).toFixed(1)}s`;
+        }, 200);
         while (!autoPlayStoppedFlag) {
           const s = readGameState();
           if (!s.hasActiveSession || s.session.won || s.session.game_over) break;
           const prevMoves = s.session.move_count;
           const best = Solver2048.getBestMove(s.session.board, depth);
           if (!best || !best.direction) break;
-          Panel.showHint({up:'↑',down:'↓',left:'←',right:'→'}[best.direction]||best.direction);
           actMove(best.direction);
-          // Wait for server to process and board to update
           await wait2048Update(prevMoves);
         }
+        clearInterval(timer);
+        const secs = ((Date.now() - startTime) / 1000).toFixed(1);
+        const fs = readGameState();
+        Panel.showHint(fs.session?.won ? `通关! ⏱ ${secs}s` : `⏱ ${secs}s`);
         break;
       }
       case 'puzzle15': {
