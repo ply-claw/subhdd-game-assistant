@@ -78,11 +78,16 @@ const SolverTile = (() => {
     const failCache = new Set(); // hash → failed
 
     function hashState(rem, sl) {
-      // Fast 32-bit hash
+      // Include first 5 tile IDs for uniqueness + slot contents
       let h = sl.length;
       for (const p of sl) h = ((h * 31) | 0) + (p ? p.charCodeAt(1) || 0 : 0);
-      // Only hash if remaining count changed significantly
-      return (rem.size * 10007 + h) >>> 0;
+      // Hash a subset of remaining IDs (first 8 sorted)
+      const ids = [...rem].sort();
+      const sample = Math.min(ids.length, 8);
+      for (let i = 0; i < sample; i++) {
+        h = ((h * 31) | 0) + (parseInt(ids[i]) || 0);
+      }
+      return (h + rem.size * 10007) >>> 0;
     }
 
     function getUncoveredIds(rem) {
@@ -124,8 +129,8 @@ const SolverTile = (() => {
       if (unc.length === 0) { failCache.add(h); return false; }
 
       // Log depth progress intermittently
-      if (depth <= 20) {
-        console.log('[tile] depth', depth, 'remaining:', remaining.size, 'slot:', slot.length, 'unc:', unc.length, 'patterns:', slot.slice(-3));
+      if (depth % 5 === 0 || depth <= 3) {
+        console.log('[tile] depth', depth, 'remaining:', remaining.size, 'slot:', slot.length, 'unc:', unc.length);
       }
 
       // Prioritize: complete 3-set > 2-of-3 > expose more tiles
