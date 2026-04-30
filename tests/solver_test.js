@@ -218,19 +218,16 @@ function searchChance(board, depth, size, cache) {
   const key = (boardKey(board) * 31 + effDepth) >>> 0;
   if (cache.has(key)) return cache.get(key);
 
-  // Sample empties (all for small boards)
-  const n = size <= 3 ? empties.length : Math.min(empties.length, 6);
-  const sampled = empties.sort(() => Math.random() - 0.5).slice(0, n);
-
+  // Iterate ALL empty cells (matching C++ behavior)
   let total = 0;
-  for (const p of sampled) {
+  for (const p of empties) {
     const b2 = cloneBoard(board); b2[p.r][p.c] = 2;
     total += 0.9 * searchPlayer(b2, effDepth - 1, size, cache);
     const b4 = cloneBoard(board); b4[p.r][p.c] = 4;
     total += 0.1 * searchPlayer(b4, effDepth - 1, size, cache);
   }
 
-  const result = Math.round(total / n);
+  const result = Math.round(total / empties.length);
   cache.set(key, result);
   return result;
 }
