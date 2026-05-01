@@ -54,6 +54,8 @@ body {
 }
 .popup-btn-primary:hover { background: #b91c1c; }
 .popup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.popup-btn-stop { background: #9ca3af; color: #1e293b; margin-top: 4px; }
+.popup-btn-stop:hover { background: #d1d5db; }
 
 .popup-hint {
   color: #64748b;
