@@ -783,29 +783,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 async function getDailyStatus() {
   const remaining = { checkin: '?', memory: '?', sudoku: '?', puzzle15: '?', tile: '?', puzzle2048: '?' };
-  // Try to read from DOM (works on game pages with difficulty panel)
+  // Sum remaining counts from difficulty cards on current page
+  let totalLeft = 0;
   document.querySelectorAll('.diff-remaining').forEach(el => {
-    const text = el.textContent || '';
-    const m = text.match(/(\d+)\s*\/\s*(\d+)/);
-    if (m) {
-      const left = parseInt(m[1]);
-      // Try to determine game from parent card
-      const card = el.closest('[data-diff]');
-      if (card) {
-        const diff = card.dataset.diff;
-        if (diff === 'mini' || diff === 'classic' || diff === 'jumbo') {
-          remaining.puzzle2048 = (remaining.puzzle2048 === '?' ? 0 : remaining.puzzle2048) + left;
-        } else if (['easy','normal','hard','hell'].includes(diff)) {
-          // Could be memory, sudoku, or tile — read from URL
-          const path = location.pathname;
-          if (path.includes('memory')) remaining.memory = (remaining.memory === '?' ? 0 : remaining.memory) + left;
-          else if (path.includes('sudoku')) remaining.sudoku = (remaining.sudoku === '?' ? 0 : remaining.sudoku) + left;
-          else if (path.includes('tile')) remaining.tile = (remaining.tile === '?' ? 0 : remaining.tile) + left;
-          else if (path.includes('puzzle15')) remaining.puzzle15 = (remaining.puzzle15 === '?' ? 0 : remaining.puzzle15) + left;
-        }
-      }
-    }
+    const m = (el.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
+    if (m) totalLeft += parseInt(m[1]);
   });
+  // Assign total to the current game type
+  if (totalLeft > 0 && currentGameType) {
+    const map = { 'puzzle2048':'puzzle2048','memory':'memory','sudoku':'sudoku','puzzle15':'puzzle15','tile':'tile' };
+    const key = map[currentGameType];
+    if (key) remaining[key] = totalLeft;
+  }
+  // Also read balance from any page
   const balEl = document.querySelector('[class*="balance"], [id*="balance"]');
   return { remaining, balance: balEl?.textContent?.replace(/[^0-9.]/g,'') || '—' };
 }
