@@ -75,7 +75,7 @@ const Runner = (() => {
       await delay();
       s.phase = 'game:puzzle2048';
       s.diffIndex = 0;
-      s.currentGame = { name: '🧩 2048', url: '/puzzle2048', type: 'puzzle2048', diffs: ['mini', 'classic', 'jumbo'] };
+      s.currentGame = { name: '🃏 记忆翻牌', url: '/memory', type: 'memory', diffs: ['hell','hard','normal','easy'] };
       setState(s);
       addLog(s.logs, '🧩 进入 2048...', null);
       window.location.href = s.currentGame.url;
@@ -124,7 +124,7 @@ const Runner = (() => {
 
       // Wait for play panel to appear
       for (let i = 0; i < 20; i++) {
-        const pp = document.getElementById('play-panel');
+        const pp = document.getElementById('play-panel') || document.getElementById('tile-desk');
         if (pp && !pp.hidden) break;
         await delay();
       }
@@ -145,7 +145,7 @@ const Runner = (() => {
     for (let attempt = 0; attempt < 500; attempt++) {
       if (s.stopRequested) return 'stopped';
 
-      const pp = document.getElementById('play-panel');
+      const pp = document.getElementById('play-panel') || document.getElementById('tile-desk');
       if (!pp || pp.hidden) return 'no-session';
 
       const statusEl = document.getElementById('page-status');
@@ -293,6 +293,23 @@ const Runner = (() => {
           }
           return document.querySelectorAll('.mem-card.is-matched').length >= total ? 'won' : 'completed';
         }
+        case 'tile': {
+          const sol = SolverTile.solve();
+          if (!sol) return 'no-solution';
+          for (const step of sol) {
+            if (s.stopRequested) return 'stopped';
+            if (document.getElementById('page-status')?.classList.contains('is-win')) return 'won';
+            const prev = document.getElementById('remaining-count')?.textContent;
+            const el = document.querySelector(`#tile-stage [data-id="${step.id}"]`);
+            if (el) el.click();
+            for (let w = 0; w < 30; w++) {
+              await delay();
+              if (document.getElementById('page-status')?.classList.contains('is-win')) return 'won';
+              if (document.getElementById('remaining-count')?.textContent !== prev) break;
+            }
+          }
+          return document.getElementById('page-status')?.classList.contains('is-win') ? 'won' : 'completed';
+        }
         default: return 'unknown';
       }
       await delay();
@@ -302,10 +319,11 @@ const Runner = (() => {
 
   function advanceToNext(s) {
     const GAMES = [
-      { name: '🧩 2048', url: '/puzzle2048', type: 'puzzle2048', diffs: ['mini', 'classic', 'jumbo'] },
-      { name: '🃏 记忆翻牌', url: '/memory', type: 'memory', diffs: ['easy', 'normal', 'hard', 'hell'] },
-      { name: '🧮 华容道', url: '/puzzle15', type: 'puzzle15', diffs: ['easy', 'classic', 'hard'] },
-      { name: '🔢 数独', url: '/sudoku', type: 'sudoku', diffs: ['easy', 'normal', 'hard', 'expert'] },
+      { name: '🃏 记忆翻牌', url: '/memory', type: 'memory', diffs: ['hell','hard','normal','easy'] },
+      { name: '🔢 数独', url: '/sudoku', type: 'sudoku', diffs: ['expert','hard','normal','easy'] },
+      { name: '🧮 华容道', url: '/puzzle15', type: 'puzzle15', diffs: ['hard','classic','easy'] },
+      { name: '🐑 羊了个羊', url: '/tile', type: 'tile', diffs: ['hell','hard','normal','easy'] },
+      { name: '🧩 2048', url: '/puzzle2048', type: 'puzzle2048', diffs: ['jumbo','classic'] },
     ];
     if (!s.currentGame) { s.currentGame = GAMES[0]; s.diffIndex = 0; return; }
     const idx = GAMES.findIndex((g) => g.type === s.currentGame.type);

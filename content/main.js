@@ -759,13 +759,11 @@ function delay(minMs, maxMs) {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'getDailyStatus') {
-    sendResponse({
-      remaining: { checkin: '?', puzzle2048: '?', memory: '?', puzzle15: '?', sudoku: '?' },
-      balance: '—',
-    });
+    getDailyStatus().then(sendResponse);
     return true;
   }
   if (msg.type === 'startDailyRun') {
+    const mode = 'inline'; // tab-based mode uses old runner
     if (typeof Runner !== 'undefined') {
       Runner.run(msg.depth || 3);
       sendResponse({ ok: true });
@@ -776,21 +774,117 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
+async function getDailyStatus() {
+  const remaining = { checkin: '?', memory: '?', sudoku: '?', puzzle15: '?', tile: '?', puzzle2048: '?' };
+  // Try to read from DOM (works on game pages with difficulty panel)
+  document.querySelectorAll('.diff-remaining').forEach(el => {
+    const text = el.textContent || '';
+    const m = text.match(/(\d+)\s*\/\s*(\d+)/);
+    if (m) {
+      const left = parseInt(m[1]);
+      // Try to determine game from parent card
+      const card = el.closest('[data-diff]');
+      if (card) {
+        const diff = card.dataset.diff;
+        if (diff === 'mini' || diff === 'classic' || diff === 'jumbo') {
+          remaining.puzzle2048 = (remaining.puzzle2048 === '?' ? 0 : remaining.puzzle2048) + left;
+        } else if (['easy','normal','hard','hell'].includes(diff)) {
+          // Could be memory, sudoku, or tile — read from URL
+          const path = location.pathname;
+          if (path.includes('memory')) remaining.memory = (remaining.memory === '?' ? 0 : remaining.memory) + left;
+          else if (path.includes('sudoku')) remaining.sudoku = (remaining.sudoku === '?' ? 0 : remaining.sudoku) + left;
+          else if (path.includes('tile')) remaining.tile = (remaining.tile === '?' ? 0 : remaining.tile) + left;
+          else if (path.includes('puzzle15')) remaining.puzzle15 = (remaining.puzzle15 === '?' ? 0 : remaining.puzzle15) + left;
+        }
+      }
+    }
+  });
+  const balEl = document.querySelector('[class*="balance"], [id*="balance"]');
+  return { remaining, balance: balEl?.textContent?.replace(/[^0-9.]/g,'') || '—' };
+}
+
 // ---- Init ----
+
+async function checkBgRunner() {
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: 'getRunInfo' });
+    if (!resp || !resp.phase) return false;
+
+    if (resp.phase === 'checkin') {
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        const btns = document.querySelectorAll('button');
+        for (const btn of btns) {
+          if ((btn.textContent || '').includes('签到') || (btn.textContent || '').includes('领取')) {
+            btn.click();
+            await new Promise(r => setTimeout(r, 2000));
+            chrome.runtime.sendMessage({ type: 'gameDone', result: { status: 'won', game: 'checkin' } });
+            return true;
+          }
+        }
+      }
+      chrome.runtime.sendMessage({ type: 'gameDone', result: { status: 'won', game: 'checkin' } });
+      return true;
+    }
+
+    if (resp.phase === 'game') {
+      currentGameType = detectGame();
+      if (!currentGameType) return false;
+      console.log('[GA] bg-runner:', resp.gameType, resp.difficulty);
+
+      for (let i = 0; i < 20; i++) {
+        const dp = document.getElementById('difficulty-panel');
+        if (dp && !dp.hidden) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+      const card = document.querySelector(`[data-diff="${resp.difficulty}"]`);
+      if (card) card.click();
+
+      for (let i = 0; i < 20; i++) {
+        const pp = document.getElementById('play-panel') || document.getElementById('tile-desk');
+        if (pp && !pp.hidden) break;
+        await new Promise(r => setTimeout(r, 500));
+      }
+
+      createPanel();
+      updatePanel();
+      autoPlayStoppedFlag = false;
+      await startAutoPlay();
+
+      const s = readGameState();
+      chrome.runtime.sendMessage({
+        type: 'gameDone',
+        result: {
+          status: s?.session?.won ? 'won' : 'completed',
+          game: currentGameType,
+          difficulty: resp.difficulty,
+        },
+      });
+      return true;
+    }
+  } catch (e) { /* bg not available */ }
+  return false;
+}
 
 function init() {
   currentGameType = detectGame();
-  if (!currentGameType) return;
+  if (!currentGameType) {
+    checkBgRunner();
+    return;
+  }
   console.log('[GA] detected game:', currentGameType);
 
   createPanel();
   updatePanel();
   startPolling();
 
-  // Resume daily run if one was in progress
-  setTimeout(() => {
-    if (typeof Runner !== 'undefined') Runner.resume();
-  }, 1500);
+  checkBgRunner().then(ran => {
+    if (!ran) {
+      setTimeout(() => {
+        if (typeof Runner !== 'undefined') Runner.resume();
+      }, 1500);
+    }
+  });
 }
 
 if (document.readyState === 'loading') {

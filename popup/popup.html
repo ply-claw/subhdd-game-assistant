@@ -10,22 +10,34 @@
     <div class="popup-header">
       <span class="popup-title">🎮 Game Assistant</span>
     </div>
-    <div class="popup-status" id="popup-status">
-      检查中...
-    </div>
-    <div class="popup-counts" id="popup-counts">
-    </div>
+    <div class="popup-status" id="popup-status">检查中...</div>
+    <div class="popup-counts" id="popup-counts"></div>
     <div class="popup-actions">
-      <button class="popup-btn popup-btn-primary" id="btn-daily-run" disabled>
-        🚀 一键全通
-      </button>
-      <p class="popup-hint">预计耗时 3-8 分钟，请保持页面打开</p>
+      <button class="popup-btn popup-btn-primary" id="btn-daily-run" disabled>🚀 一键全通</button>
+      <p class="popup-hint" id="popup-hint">预计耗时 5-15 分钟</p>
     </div>
     <div class="popup-settings">
       <label class="popup-setting">
         <span>2048 搜索深度:</span>
         <input type="range" id="depth-slider" min="1" max="5" value="3" step="1">
         <span id="depth-val">3</span>
+      </label>
+      <label class="popup-setting">
+        <span>运行模式:</span>
+        <select id="run-mode">
+          <option value="tabs">新标签页</option>
+          <option value="inline">当前标签</option>
+        </select>
+      </label>
+      <label class="popup-setting" style="align-items:flex-start;flex-direction:column;gap:4px">
+        <span style="display:flex;align-items:center;gap:6px">
+          <input type="checkbox" id="auto-run-toggle">
+          <span>每日定时自动通关</span>
+        </span>
+        <span style="display:flex;align-items:center;gap:6px;margin-left:22px">
+          <span>时间:</span>
+          <input type="time" id="auto-run-time" value="01:00" style="width:80px;background:#1e293b;color:#e0e0e0;border:1px solid #334155;border-radius:4px;padding:2px 4px;font-size:11px">
+        </span>
       </label>
     </div>
     <div class="popup-footer" id="popup-footer"></div>

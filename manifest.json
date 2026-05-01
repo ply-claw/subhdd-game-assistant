@@ -3,8 +3,9 @@
   "name": "SubHDD Game Assistant",
   "version": "0.5.0",
   "description": "Game assistant for sub.hdd.sb — 2048, memory, puzzle15, sudoku",
-  "permissions": ["storage", "notifications"],
+  "permissions": ["storage", "notifications", "tabs", "alarms"],
   "host_permissions": ["https://sub.hdd.sb/*"],
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": [
@@ -12,7 +13,9 @@
         "https://sub.hdd.sb/memory*",
         "https://sub.hdd.sb/puzzle15*",
         "https://sub.hdd.sb/sudoku*",
-        "https://sub.hdd.sb/tile*"
+        "https://sub.hdd.sb/tile*",
+        "https://sub.hdd.sb/hub*",
+        "https://sub.hdd.sb/checkin*"
       ],
       "js": [
         "content/solvers/solver2048.js",
