@@ -832,30 +832,46 @@ async function checkBgRunner() {
       if (!currentGameType) return false;
       console.log('[GA] bg-runner:', resp.gameType, resp.difficulty);
 
-      for (let i = 0; i < 20; i++) {
+      // Wait for difficulty panel to be visible
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 300));
         const dp = document.getElementById('difficulty-panel');
         if (dp && !dp.hidden) break;
-        await new Promise(r => setTimeout(r, 500));
       }
-      const card = document.querySelector(`[data-diff="${resp.difficulty}"]`);
-      if (card) card.click();
 
-      for (let i = 0; i < 20; i++) {
-        const pp = document.getElementById('play-panel') || document.getElementById('tile-desk');
+      // Click the difficulty
+      const card = document.querySelector(`[data-diff="${resp.difficulty}"]`);
+      if (!card) { console.warn('[GA] diff card not found:', resp.difficulty); return false; }
+      card.click();
+
+      // Wait for game to actually start — play panel visible
+      const ppId = currentGameType === 'tile' ? 'tile-desk' : 'play-panel';
+      for (let i = 0; i < 40; i++) {
+        await new Promise(r => setTimeout(r, 300));
+        const pp = document.getElementById(ppId);
         if (pp && !pp.hidden) break;
-        await new Promise(r => setTimeout(r, 500));
+      }
+
+      // Wait for game state to be active (API response received)
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 300));
+        const s = readGameState();
+        if (s && s.hasActiveSession) break;
       }
 
       createPanel();
       updatePanel();
+      startPolling();
       autoPlayStoppedFlag = false;
+      autoPlayRunning = false;
       await startAutoPlay();
 
       const s = readGameState();
+      const won = !!(s?.session?.won || document.getElementById('page-status')?.classList.contains('is-win'));
       chrome.runtime.sendMessage({
         type: 'gameDone',
         result: {
-          status: s?.session?.won ? 'won' : 'completed',
+          status: won ? 'won' : 'completed',
           game: currentGameType,
           difficulty: resp.difficulty,
         },

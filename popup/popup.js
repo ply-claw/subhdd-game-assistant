@@ -3,6 +3,7 @@
 const depthSlider = document.getElementById('depth-slider');
 const depthVal = document.getElementById('depth-val');
 const dailyBtn = document.getElementById('btn-daily-run');
+const stopBtn = document.getElementById('btn-stop-run');
 const statusEl = document.getElementById('popup-status');
 const countsEl = document.getElementById('popup-counts');
 const footerEl = document.getElementById('popup-footer');
@@ -96,8 +97,9 @@ function renderCounts(status) {
 dailyBtn.addEventListener('click', async () => {
   dailyBtn.disabled = true;
   dailyBtn.textContent = '⏳ 执行中...';
+  stopBtn.style.display = 'block';
   const tab = await checkTab();
-  if (!tab) { dailyBtn.disabled = false; dailyBtn.textContent = '🚀 一键全通'; return; }
+  if (!tab) { resetButtons(); return; }
 
   const depth = Number(depthSlider.value) || 3;
   if (runModeEl.value === 'tabs') {
@@ -105,8 +107,35 @@ dailyBtn.addEventListener('click', async () => {
   } else {
     await sendToTab(tab, { type: 'startDailyRun', depth });
   }
-  dailyBtn.disabled = false;
-  dailyBtn.textContent = '🚀 一键全通';
+  resetButtons();
 });
 
-checkTab().then((tab) => { if (tab) refreshStatus(); });
+stopBtn.addEventListener('click', async () => {
+  stopBtn.disabled = true;
+  stopBtn.textContent = '⏳ 停止中...';
+  await sendToBg({ type: 'stopDailyRun' });
+  resetButtons();
+});
+
+function resetButtons() {
+  dailyBtn.disabled = false;
+  dailyBtn.textContent = '🚀 一键全通';
+  stopBtn.style.display = 'none';
+  stopBtn.disabled = false;
+  stopBtn.textContent = '⏹ 停止';
+}
+
+// Check run status on open
+async function checkRunStatus() {
+  const resp = await sendToBg({ type: 'getRunStatus' });
+  if (resp && resp.running) {
+    dailyBtn.disabled = true;
+    dailyBtn.textContent = '⏳ 执行中...';
+    stopBtn.style.display = 'block';
+  }
+}
+
+checkTab().then((tab) => {
+  if (tab) refreshStatus();
+  checkRunStatus();
+});

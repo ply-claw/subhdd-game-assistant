@@ -134,6 +134,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({ ok: true });
     return true;
   }
+  if (msg.type === 'stopDailyRun') {
+    clearRunState();
+    sendResponse({ ok: true });
+    return true;
+  }
   if (msg.type === 'gameDone') {
     onGameDone(sender.tab.id, msg.result);
     sendResponse({ ok: true });
@@ -141,6 +146,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (msg.type === 'getRunInfo') {
     getRunInfo(sender.tab.id).then(sendResponse);
+    return true;
+  }
+  if (msg.type === 'getRunStatus') {
+    getRunState().then(s => sendResponse({ running: !!(s && s.running) }));
     return true;
   }
 });
