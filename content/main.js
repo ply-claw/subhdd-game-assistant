@@ -810,18 +810,24 @@ async function checkBgRunner() {
     if (!resp || !resp.phase) return false;
 
     if (resp.phase === 'checkin') {
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 500));
+      console.log('[GA] bg-runner: checkin');
+      // The checkin page at /checkin might redirect. Find the button with retries.
+      let clicked = false;
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 800));
         const btns = document.querySelectorAll('button');
         for (const btn of btns) {
-          if ((btn.textContent || '').includes('签到') || (btn.textContent || '').includes('领取')) {
+          const text = btn.textContent || '';
+          if (text.includes('签到') || text.includes('领取')) {
             btn.click();
-            await new Promise(r => setTimeout(r, 2000));
-            chrome.runtime.sendMessage({ type: 'gameDone', result: { status: 'won', game: 'checkin' } });
-            return true;
+            clicked = true;
+            console.log('[GA] checkin button clicked');
+            break;
           }
         }
+        if (clicked) break;
       }
+      await new Promise(r => setTimeout(r, 2000));
       chrome.runtime.sendMessage({ type: 'gameDone', result: { status: 'won', game: 'checkin' } });
       return true;
     }
