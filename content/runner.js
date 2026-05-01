@@ -110,16 +110,14 @@ const Runner = (() => {
       addLog(s.logs, `  ${game.name} ${diff} 开始...`, null);
       setState(s);
 
-      // Wait for difficulty panel to be visible
-      for (let i = 0; i < 20; i++) {
-        const dp = document.getElementById('difficulty-panel');
-        if (dp && !dp.hidden) break;
+      // Wait for difficulty buttons to render
+      let btns = [];
+      for (let i = 0; i < 30; i++) {
+        const grid = document.getElementById('difficulty-grid');
+        btns = grid ? grid.querySelectorAll('button') : [];
+        if (btns.length > 0) break;
         await delay();
       }
-
-      // Click difficulty (buttons ordered easy→hard, we go hard→easy)
-      const grid = document.getElementById('difficulty-grid');
-      const btns = grid ? grid.querySelectorAll('button') : [];
       const idx = btns.length - 1 - s.diffIndex;
       if (idx >= 0 && idx < btns.length) { btns[idx].click(); }
       else { addLog(s.logs, `  找不到难度 ${diff}`, 'error'); advanceToNext(s); setState(s); return; }

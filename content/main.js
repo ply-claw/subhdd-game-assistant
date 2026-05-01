@@ -837,18 +837,17 @@ async function checkBgRunner() {
       if (!currentGameType) return false;
       console.log('[GA] bg-runner:', resp.gameType, resp.difficulty);
 
-      // Wait for difficulty panel to be visible
-      for (let i = 0; i < 30; i++) {
+      // Wait for difficulty buttons to be rendered
+      let btns = [];
+      for (let i = 0; i < 40; i++) {
         await new Promise(r => setTimeout(r, 300));
-        const dp = document.getElementById('difficulty-panel');
-        if (dp && !dp.hidden) break;
+        const grid = document.getElementById('difficulty-grid');
+        btns = grid ? grid.querySelectorAll('button') : [];
+        if (btns.length > 0) break;
       }
+      if (btns.length === 0) { console.warn('[GA] no diff buttons after wait'); return false; }
 
-      // Click the difficulty (buttons are ordered easy→hard in DOM)
-      // We go hard→easy, so diffIdx=0 → last button, diffIdx=1 → second-to-last, etc.
-      const grid = document.getElementById('difficulty-grid');
-      if (!grid) { console.warn('[GA] difficulty grid not found'); return false; }
-      const btns = grid.querySelectorAll('button');
+      // Buttons are ordered easy→hard in DOM. We go hard→easy.
       const btnIdx = btns.length - 1 - (resp.diffIdx || 0);
       if (btnIdx < 0 || btnIdx >= btns.length) {
         console.warn('[GA] diff btn idx out of range:', btnIdx, 'total:', btns.length);
