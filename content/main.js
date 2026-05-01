@@ -807,7 +807,9 @@ async function getDailyStatus() {
 
 async function checkBgRunner() {
   try {
+    console.log('[GA] checkBgRunner: sending getRunInfo...');
     const resp = await chrome.runtime.sendMessage({ type: 'getRunInfo' });
+    console.log('[GA] checkBgRunner: response', JSON.stringify(resp));
     if (!resp || !resp.phase) return false;
 
     if (resp.phase === 'checkin') {
@@ -878,7 +880,7 @@ async function checkBgRunner() {
       });
       return true;
     }
-  } catch (e) { /* bg not available */ }
+  } catch (e) { console.error('[GA] checkBgRunner error:', e.message); }
   return false;
 }
 

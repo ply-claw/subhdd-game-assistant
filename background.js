@@ -105,6 +105,7 @@ async function finishRun(state) {
 // ---- Check for active run on tab load (content script asks) ----
 async function getRunInfo(tabId) {
   const state = await getRunState();
+  console.log('[bg] getRunInfo tab', tabId, 'state:', state ? 'running' : 'none');
   if (!state || !state.running) return null;
   // Return what this specific tab should do
   if (state.phase === 'checkin' && state.checkinTabId === tabId) {
