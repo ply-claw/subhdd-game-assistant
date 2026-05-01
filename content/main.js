@@ -264,9 +264,16 @@ function actFillCell(row, col, value) {
 }
 
 function actStartGame(difficulty) {
-  // Click the difficulty card
-  const diffCard = document.querySelector(`[data-diff="${difficulty}"]`);
-  if (diffCard) diffCard.click();
+  // Click by data-diff (2048) or try button order
+  const card = document.querySelector(`[data-diff="${difficulty}"]`);
+  if (card) { card.click(); return; }
+  // Fallback: click by button index in difficulty grid
+  const grid = document.getElementById('difficulty-grid');
+  const btns = grid ? grid.querySelectorAll('button') : [];
+  // Map difficulty names to their position (last = hardest)
+  const labels = [...btns].map(b => b.textContent?.trim());
+  const idx = labels.findIndex(l => l.includes(difficulty));
+  if (idx >= 0) btns[idx].click();
 }
 
 // ---- Panel integration ----
@@ -841,10 +848,17 @@ async function checkBgRunner() {
         if (dp && !dp.hidden) break;
       }
 
-      // Click the difficulty
-      const card = document.querySelector(`[data-diff="${resp.difficulty}"]`);
-      if (!card) { console.warn('[GA] diff card not found:', resp.difficulty); return false; }
-      card.click();
+      // Click the difficulty (buttons are ordered easy→hard in DOM)
+      // We go hard→easy, so diffIdx=0 → last button, diffIdx=1 → second-to-last, etc.
+      const grid = document.getElementById('difficulty-grid');
+      if (!grid) { console.warn('[GA] difficulty grid not found'); return false; }
+      const btns = grid.querySelectorAll('button');
+      const btnIdx = btns.length - 1 - (resp.diffIdx || 0);
+      if (btnIdx < 0 || btnIdx >= btns.length) {
+        console.warn('[GA] diff btn idx out of range:', btnIdx, 'total:', btns.length);
+        return false;
+      }
+      btns[btnIdx].click();
 
       // Wait for game to actually start — play panel visible
       const ppId = currentGameType === 'tile' ? 'tile-desk' : 'play-panel';

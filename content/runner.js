@@ -117,9 +117,11 @@ const Runner = (() => {
         await delay();
       }
 
-      // Click difficulty card
-      const diffCard = document.querySelector(`[data-diff="${diff}"]`);
-      if (diffCard) { diffCard.click(); }
+      // Click difficulty (buttons ordered easy→hard, we go hard→easy)
+      const grid = document.getElementById('difficulty-grid');
+      const btns = grid ? grid.querySelectorAll('button') : [];
+      const idx = btns.length - 1 - s.diffIndex;
+      if (idx >= 0 && idx < btns.length) { btns[idx].click(); }
       else { addLog(s.logs, `  找不到难度 ${diff}`, 'error'); advanceToNext(s); setState(s); return; }
 
       // Wait for play panel to appear
