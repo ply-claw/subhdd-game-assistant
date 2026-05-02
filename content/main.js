@@ -792,15 +792,21 @@ function cacheGameCounts() {
     const m = (el.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
     if (m) totalLeft += parseInt(m[1]);
   });
-  chrome.storage.local.set({ ['ga_remaining_' + key]: totalLeft });
-  // Also cache balance
+  const today = new Date().toDateString();
+  chrome.storage.local.set({ ['ga_remaining_' + key]: totalLeft, ga_data_date: today });
   const balEl = document.querySelector('[class*="balance"], [id*="balance"]');
   if (balEl) chrome.storage.local.set({ ga_balance: balEl.textContent.replace(/[^0-9.]/g,'') || '—' });
 }
 
 async function getDailyStatus() {
   const keys = ['ga_remaining_checkin','ga_remaining_memory','ga_remaining_sudoku','ga_remaining_puzzle15','ga_remaining_tile','ga_remaining_puzzle2048'];
-  const data = await chrome.storage.local.get(keys.concat('ga_balance'));
+  const data = await chrome.storage.local.get(keys.concat(['ga_balance','ga_data_date']));
+  const today = new Date().toDateString();
+  // Expire data from previous days
+  if (data.ga_data_date !== today) {
+    await chrome.storage.local.remove(keys.concat(['ga_balance','ga_data_date']));
+    return { remaining: { checkin:'?',memory:'?',sudoku:'?',puzzle15:'?',tile:'?',puzzle2048:'?' }, balance:'—' };
+  }
   return {
     remaining: {
       checkin: data.ga_remaining_checkin ?? '?',
