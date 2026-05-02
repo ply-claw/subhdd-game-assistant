@@ -13,16 +13,16 @@ const GAMES = [
 
 const BASE = 'https://sub.hdd.sb';
 
-// ---- Run state in chrome.storage.session ----
+// ---- Run state in chrome.storage.local ----
 async function getRunState() {
-  const r = await chrome.storage.session.get('ga-run');
+  const r = await chrome.storage.local.get('ga-run');
   return r['ga-run'] || null;
 }
 async function setRunState(s) {
-  await chrome.storage.session.set({'ga-run': s});
+  await chrome.storage.local.set({'ga-run': s});
 }
 async function clearRunState() {
-  await chrome.storage.session.remove('ga-run');
+  await chrome.storage.local.remove('ga-run');
 }
 
 // ---- Notification ----
