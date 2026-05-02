@@ -911,7 +911,13 @@ async function checkBgRunner() {
       });
       return true;
     }
-  } catch (e) { console.error('[GA] checkBgRunner error:', e.message); }
+  } catch (e) {
+    if (e.message.includes('Extension context invalidated')) {
+      console.log('[GA] extension reloaded, stopping bg runner');
+    } else {
+      console.error('[GA] checkBgRunner error:', e.message);
+    }
+  }
   return false;
 }
 
