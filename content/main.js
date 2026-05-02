@@ -871,49 +871,50 @@ async function checkBgRunner() {
       if (!currentGameType) return false;
       console.log('[GA] bg-runner:', resp.gameType, resp.difficulty);
 
-      // Wait for difficulty buttons to be rendered
-      let btns = [];
-      for (let i = 0; i < 50; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        const grid = document.getElementById('difficulty-grid');
-        if (!grid) { console.log('[GA] difficulty-grid element not found, retry', i); continue; }
-        btns = grid.querySelectorAll('button');
-        if (btns.length > 0) { console.log('[GA] found', btns.length, 'diff buttons after', i, 'retries'); break; }
-        // Also try by class
-        const altBtns = document.querySelectorAll('.p15-diff-card, .mem-diff-card, .sudoku-diff-card, .p2048-diff-card');
-        if (altBtns.length > 0) { btns = altBtns; console.log('[GA] found', btns.length, 'buttons by class'); break; }
-      }
-      if (btns.length === 0) { console.warn('[GA] no diff buttons after wait, checking grid:', !!document.getElementById('difficulty-grid'), 'body length:', document.body?.innerHTML?.length); return false; }
-
-      // Buttons are ordered easy→hard in DOM. We go hard→easy.
-      const btnIdx = btns.length - 1 - (resp.diffIdx || 0);
-      if (btnIdx < 0 || btnIdx >= btns.length) {
-        console.warn('[GA] diff btn idx out of range:', btnIdx, 'total:', btns.length);
-        return false;
-      }
-      if (btns[btnIdx].disabled) {
-        // This difficulty has 0 remaining — skip and report as skipped
-        console.log('[GA] difficulty', resp.difficulty, 'is disabled, skipping');
-        chrome.runtime.sendMessage({
-          type: 'gameDone', result: { status: 'skipped', game: currentGameType, difficulty: resp.difficulty },
-        });
-        return true;
-      }
-      btns[btnIdx].click();
-
-      // Wait for game to actually start — play panel visible
       const ppId = currentGameType === 'tile' ? 'tile-desk' : 'play-panel';
-      for (let i = 0; i < 40; i++) {
-        await new Promise(r => setTimeout(r, 300));
-        const pp = document.getElementById(ppId);
-        if (pp && !pp.hidden) break;
-      }
+      const playPanel = document.getElementById(ppId);
+      const hasActiveSession = playPanel && !playPanel.hidden;
 
-      // Wait for game state to be active (API response received)
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 300));
-        const s = readGameState();
-        if (s && s.hasActiveSession) break;
+      if (!hasActiveSession) {
+        // No active session — need to select difficulty first
+        let btns = [];
+        for (let i = 0; i < 50; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          const grid = document.getElementById('difficulty-grid');
+          if (!grid) continue;
+          btns = grid.querySelectorAll('button');
+          if (btns.length > 0) break;
+          const altBtns = document.querySelectorAll('.p15-diff-card, .mem-diff-card, .sudoku-diff-card, .p2048-diff-card');
+          if (altBtns.length > 0) { btns = altBtns; break; }
+        }
+        if (btns.length === 0) { console.warn('[GA] no diff buttons'); return false; }
+
+        const btnIdx = btns.length - 1 - (resp.diffIdx || 0);
+        if (btnIdx < 0 || btnIdx >= btns.length) { console.warn('[GA] btn idx out of range'); return false; }
+        if (btns[btnIdx].disabled) {
+          console.log('[GA] diff', resp.difficulty, 'disabled, skipping');
+          chrome.runtime.sendMessage({
+            type: 'gameDone', result: { status: 'skipped', game: currentGameType, difficulty: resp.difficulty },
+          });
+          return true;
+        }
+        btns[btnIdx].click();
+
+        // Wait for game to start
+        for (let i = 0; i < 40; i++) {
+          await new Promise(r => setTimeout(r, 300));
+          const pp = document.getElementById(ppId);
+          if (pp && !pp.hidden) break;
+        }
+
+        // Wait for active session to appear
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 300));
+          const s = readGameState();
+          if (s && s.hasActiveSession) break;
+        }
+      } else {
+        console.log('[GA] active session already present, completing it');
       }
 
       createPanel();
