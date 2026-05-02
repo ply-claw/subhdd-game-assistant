@@ -853,6 +853,14 @@ async function checkBgRunner() {
         console.warn('[GA] diff btn idx out of range:', btnIdx, 'total:', btns.length);
         return false;
       }
+      if (btns[btnIdx].disabled) {
+        // This difficulty has 0 remaining — skip and report as skipped
+        console.log('[GA] difficulty', resp.difficulty, 'is disabled, skipping');
+        chrome.runtime.sendMessage({
+          type: 'gameDone', result: { status: 'skipped', game: currentGameType, difficulty: resp.difficulty },
+        });
+        return true;
+      }
       btns[btnIdx].click();
 
       // Wait for game to actually start — play panel visible
