@@ -976,6 +976,7 @@ async function checkBgRunner() {
           createPanel(); updatePanel(); startPolling();
           autoPlayStoppedFlag = false; autoPlayRunning = false;
           await startAutoPlay();
+          cacheGameCounts(); // update stored remaining counts
 
           // After game, card might be disabled now (0 remaining)
           if (card.disabled) keepGoing = false;
