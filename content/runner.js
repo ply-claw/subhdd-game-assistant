@@ -119,7 +119,16 @@ const Runner = (() => {
         await delay();
       }
       const idx = btns.length - 1 - s.diffIndex;
-      if (idx >= 0 && idx < btns.length) { btns[idx].click(); }
+      if (idx >= 0 && idx < btns.length) {
+        if (btns[idx].disabled) {
+          addLog(s.logs, `  ${diff}: 已完成，跳过`, null);
+          s.diffIndex++;
+          setState(s);
+          window.location.href = game.url;
+          return;
+        }
+        btns[idx].click();
+      }
       else { addLog(s.logs, `  找不到难度 ${diff}`, 'error'); advanceToNext(s); setState(s); return; }
 
       // Wait for play panel to appear
