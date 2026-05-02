@@ -270,21 +270,18 @@ const SolverPuzzle15 = (() => {
       // Phase 4a: Solve first 2 tiles of 4×4 row (sub-positions 0,1)
       let ms = await phasedSearch(mapped, subSize, new Set([0,1]), new Set(), mapped, DL, prog);
       if (!ms) { console.error('[p15] Phase 4a FAILED'); return null; }
-      for (const m of ms) { const z=mapped.indexOf(0),ti=mapped.indexOf(m.tile); [mapped[z],mapped[ti]]=[mapped[ti],mapped[z]]; }
       allMoves.push(...applyMappedMoves(ms, cur, mapped));
       console.log('[p15] Phase 4a done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
 
       // Phase 4b: Solve last 2 tiles of 4×4 row (sub-positions 2,3)
       ms = await phasedSearch(mapped, subSize, new Set([2,3]), new Set([0,1]), mapped, DL, prog);
       if (!ms) { console.error('[p15] Phase 4b FAILED'); return null; }
-      for (const m of ms) { const z=mapped.indexOf(0),ti=mapped.indexOf(m.tile); [mapped[z],mapped[ti]]=[mapped[ti],mapped[z]]; }
       allMoves.push(...applyMappedMoves(ms, cur, mapped));
       console.log('[p15] Phase 4b done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
 
       // Phase 4c: Solve first col of 4×4 (sub-positions 4,8,12 — skip row 0)
       ms = await phasedSearch(mapped, subSize, new Set([4,8,12]), new Set([0,1,2,3]), mapped, DL, prog);
       if (!ms) { console.error('[p15] Phase 4c FAILED'); return null; }
-      for (const m of ms) { const z=mapped.indexOf(0),ti=mapped.indexOf(m.tile); [mapped[z],mapped[ti]]=[mapped[ti],mapped[z]]; }
       allMoves.push(...applyMappedMoves(ms, cur, mapped));
       console.log('[p15] Phase 4c done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
 
