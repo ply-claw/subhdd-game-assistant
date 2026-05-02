@@ -196,9 +196,10 @@ const SolverPuzzle15 = (() => {
     const goal1 = new Set([0, 1]);
     if (prog) prog.bound = 1;
     let moves = await phasedSearch(cur, size, goal1, new Set(), cur, DL, prog);
-    if (!moves) return null;
+    if (!moves) { console.error('[p15] Phase 1 FAILED'); return null; }
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
+    console.log('[p15] Phase 1 done (row 1-2).', moves.length, 'moves. Board:', cur.join(','));
 
     // Phase 2: Lock first 2, solve last 3 row tiles (positions 2,3,4)
     const goal2 = new Set([2, 3, 4]);
@@ -206,9 +207,10 @@ const SolverPuzzle15 = (() => {
     const orig2 = cur.slice();
     if (prog) prog.bound = 2;
     moves = await phasedSearch(cur, size, goal2, lock2, orig2, DL, prog);
-    if (!moves) return null;
+    if (!moves) { console.error('[p15] Phase 2 FAILED'); return null; }
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
+    console.log('[p15] Phase 2 done (row 3-5).', moves.length, 'moves. Board:', cur.join(','));
 
     // Phase 3: Lock row 0, solve first column (positions 5,10,15,20)
     const goal3 = new Set([5, 10, 15, 20]);
@@ -216,9 +218,10 @@ const SolverPuzzle15 = (() => {
     const orig3 = cur.slice();
     if (prog) prog.bound = 3;
     moves = await phasedSearch(cur, size, goal3, lock3, orig3, DL, prog);
-    if (!moves) return null;
+    if (!moves) { console.error('[p15] Phase 3 FAILED'); return null; }
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
+    console.log('[p15] Phase 3 done (col).', moves.length, 'moves. Board:', cur.join(','));
 
     // Phase 4: Lock row 0 + col 0, extract 4×4 and IDA*
     const subSize = size - 1;
@@ -233,9 +236,10 @@ const SolverPuzzle15 = (() => {
         valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
 
     const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
+    console.log('[p15] Phase 4 start. 4x4 mapped:', mapped.join(','), 'valMap size:', Object.keys(valMap).length);
     if (prog) prog.bound = 4;
     const subMoves = await solveIDA(mapped, subSize, prog);
-    if (!subMoves) return null;
+    if (!subMoves) { console.error('[p15] Phase 4 IDA* FAILED. Mapped board:', mapped.join(',')); return null; }
 
     const vToOv = {};
     for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
@@ -244,6 +248,7 @@ const SolverPuzzle15 = (() => {
       if (ot === undefined) return null;
       allMoves.push({ tile: ot });
     }
+    console.log('[p15] Phase 4 done. Total moves:', allMoves.length);
 
     return allMoves;
   }
