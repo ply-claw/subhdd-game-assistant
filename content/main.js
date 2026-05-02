@@ -859,13 +859,17 @@ async function checkBgRunner() {
 
       // Wait for difficulty buttons to be rendered
       let btns = [];
-      for (let i = 0; i < 40; i++) {
-        await new Promise(r => setTimeout(r, 300));
+      for (let i = 0; i < 50; i++) {
+        await new Promise(r => setTimeout(r, 500));
         const grid = document.getElementById('difficulty-grid');
-        btns = grid ? grid.querySelectorAll('button') : [];
-        if (btns.length > 0) break;
+        if (!grid) { console.log('[GA] difficulty-grid element not found, retry', i); continue; }
+        btns = grid.querySelectorAll('button');
+        if (btns.length > 0) { console.log('[GA] found', btns.length, 'diff buttons after', i, 'retries'); break; }
+        // Also try by class
+        const altBtns = document.querySelectorAll('.p15-diff-card, .mem-diff-card, .sudoku-diff-card, .p2048-diff-card');
+        if (altBtns.length > 0) { btns = altBtns; console.log('[GA] found', btns.length, 'buttons by class'); break; }
       }
-      if (btns.length === 0) { console.warn('[GA] no diff buttons after wait'); return false; }
+      if (btns.length === 0) { console.warn('[GA] no diff buttons after wait, checking grid:', !!document.getElementById('difficulty-grid'), 'body length:', document.body?.innerHTML?.length); return false; }
 
       // Buttons are ordered easy→hard in DOM. We go hard→easy.
       const btnIdx = btns.length - 1 - (resp.diffIdx || 0);

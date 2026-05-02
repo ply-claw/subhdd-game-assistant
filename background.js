@@ -47,7 +47,7 @@ async function startDailyRun(depth) {
   await setRunState(state);
 
   // Open checkin page
-  const tab = await chrome.tabs.create({ url: BASE + '/checkin', active: false });
+  const tab = await chrome.tabs.create({ url: BASE + '/checkin', active: true });
   state.checkinTabId = tab.id;
   await setRunState(state);
 }
@@ -89,7 +89,7 @@ async function onGameDone(tabId, result) {
   await setRunState(state);
   const g = GAMES[state.gameIdx];
   const url = BASE + g.url;
-  const tab = await chrome.tabs.create({ url, active: false });
+  const tab = await chrome.tabs.create({ url, active: true });
 }
 
 async function finishRun(state) {
