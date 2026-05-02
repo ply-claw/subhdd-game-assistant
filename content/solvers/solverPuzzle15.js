@@ -1,8 +1,6 @@
 'use strict';
 
-// Sliding puzzle solver.
-// ≤4×4: IDA* (optimal).
-// 5×5: A* place each tile of first row + first column, then IDA* on 4×4 remainder.
+// Sliding puzzle solver: IDA* with recursive reduction on timeout.
 
 const SolverPuzzle15 = (() => {
 
@@ -58,7 +56,6 @@ const SolverPuzzle15 = (() => {
     return n;
   }
 
-  // ---- Heap ----
   class Heap {
     constructor() { this.d = []; }
     push(v) { this.d.push(v); let i=this.d.length-1; while(i>0){const p=(i-1)>>1; if(this.d[p].f<=this.d[i].f)break;[this.d[p],this.d[i]]=[this.d[i],this.d[p]];i=p;} }
@@ -66,7 +63,7 @@ const SolverPuzzle15 = (() => {
     get size() { return this.d.length; }
   }
 
-  // ---- IDA* for ≤4×4 ----
+  // ---- IDA* ----
   async function idaSearch(board, size, g, bound, path, visited, iter, deadline, prog) {
     iter.val++;
     if (iter.val % 2000 === 0) {
@@ -122,44 +119,32 @@ const SolverPuzzle15 = (() => {
     return null;
   }
 
-  // ---- Main solve ----
-  // Phased search: find state where specific tiles are at correct positions.
-  // goalIndices: Set of indices that must have correct values.
-  // locked: Set of indices that must NOT change from 'original'.
-  // weighted A* (w=2) for speed over optimality.
-  async function phasedSearch(board, size, goalSet, locked, original, deadline, prog, label) {
-    // Heuristic: sum of Manhattan distances for tiles in goalSet
+  // ---- Phased search (weighted A*) ----
+  async function phasedSearch(board, size, goalSet, locked, original, deadline, prog) {
     function h(b) {
       let d = 0;
       for (const idx of goalSet) {
-        const v = idx + 1; // correct value at this index
+        const v = idx + 1;
         const pos = b.indexOf(v);
         if (pos < 0) d += 999;
-        else d += Math.abs(Math.floor(pos/size) - Math.floor(idx/size)) + Math.abs((pos%size) - (idx%size));
+        else d += Math.abs(Math.floor(pos/size)-Math.floor(idx/size)) + Math.abs((pos%size)-(idx%size));
       }
-      // Penalize disturbed locked cells
-      for (const idx of locked) {
-        if (b[idx] !== original[idx]) d += 1000;
-      }
+      for (const idx of locked) { if (b[idx] !== original[idx]) d += 1000; }
       return d;
     }
-
     function goalCheck(b) {
       for (const idx of goalSet) if (b[idx] !== idx + 1) return false;
       for (const idx of locked) if (b[idx] !== original[idx]) return false;
       return true;
     }
-
     if (goalCheck(board)) return [];
     const startKey = boardToKey(board);
     const heap = new Heap();
-    heap.push({ board, g: 0, f: h(board) * 2, path: [] }); // w=2 weighted A*
-    const bestG = new Map([[startKey, 0]]);
+    heap.push({ board, g:0, f: h(board)*2, path: [] });
+    const bestG = new Map([[startKey,0]]);
     let iter = 0;
     const MAX = 4000000;
-
     if (prog) { prog.maxBound = MAX; prog.iter = 0; }
-
     while (heap.size > 0 && iter < MAX) {
       iter++;
       if (iter % 5000 === 0) {
@@ -170,164 +155,161 @@ const SolverPuzzle15 = (() => {
       const cur = heap.pop();
       if (!cur) return null;
       if (goalCheck(cur.board)) return cur.path;
-
       const ns = getNeighbors(cur.board, size, locked);
       for (const nb of ns) {
         const newG = cur.g + 1;
         const key = boardToKey(nb.board);
         if (bestG.has(key) && bestG.get(key) <= newG) continue;
         bestG.set(key, newG);
-        heap.push({ board: nb.board, g: newG, f: newG + h(nb.board) * 2, path: [...cur.path, { tile: nb.tile }] });
+        heap.push({ board: nb.board, g: newG, f: newG + h(nb.board)*2, path: [...cur.path, {tile:nb.tile}] });
       }
     }
     return null;
   }
 
-  async function solve(board, size, prog) {
-    if (size <= 4) return await solveIDA(board, size, prog);
+  // ---- Unified solver with recursive fallback ----
+  async function solveWithFallback(board, size, prog, deadlineMs) {
+    let done = true;
+    for (let i = 0; i < size*size; i++) {
+      if (board[i] !== (i < size*size-1 ? i+1 : 0)) { done = false; break; }
+    }
+    if (done) return [];
 
-    // 5×5: 4-phase search
+    // Try IDA* first
+    const result = await solveIDA(board, size, prog);
+    if (result) return result;
+
+    // If size ≤ 3, give up (shouldn't timeout for 3x3)
+    if (size <= 3) return null;
+
+    // IDA* timed out — recursive reduction: row → col → sub-puzzle
+    // console.log('[p15] size', size, 'IDA* timed out, reducing');
+    const DL = Date.now() + (deadlineMs || 600000);
+    const allMoves = [];
+    let cur = board.slice();
+    const subSize = size - 1;
+
+    // Phase a: row 0, first 2 tiles
+    let ms = await phasedSearch(cur, size, new Set([0,1]), new Set(), cur, DL, null);
+    if (!ms) return null;
+    for (const m of ms) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+    allMoves.push(...ms);
+    // console.log('[p15] FB row(1-2) done. Board:', cur.join(','));
+
+    // Phase b: row 0, remaining tiles
+    const rowTail = new Set();
+    for (let c = 2; c < size; c++) rowTail.add(c);
+    const lockB = new Set([0,1]);
+    const origB = cur.slice();
+    ms = await phasedSearch(cur, size, rowTail, lockB, origB, DL, null);
+    if (!ms) return null;
+    for (const m of ms) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+    allMoves.push(...ms);
+    // console.log('[p15] FB row(rest) done. Board:', cur.join(','));
+
+    // Phase c: col 0 (skip row 0)
+    const colGoal = new Set();
+    for (let r = 1; r < size; r++) colGoal.add(r * size);
+    const lockC = new Set();
+    for (let c = 0; c < size; c++) lockC.add(c);
+    const origC = cur.slice();
+    ms = await phasedSearch(cur, size, colGoal, lockC, origC, DL, null);
+    if (!ms) return null;
+    for (const m of ms) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
+    allMoves.push(...ms);
+    // console.log('[p15] FB col done. Board:', cur.join(','));
+
+    // Phase d: extract (size-1)×(size-1) sub-puzzle and recurse
+    const subBoard = [];
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        subBoard.push(cur[r*size + c]);
+
+    const valMap = {0: 0};
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
+
+    const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
+    const subMoves = await solveWithFallback(mapped, subSize, null, 15000);
+    if (!subMoves) return null;
+
+    // Map sub-moves back to original values
+    const rev = {};
+    for (const [ov, sv] of Object.entries(valMap)) rev[sv] = parseInt(ov);
+    for (const sm of subMoves) {
+      const ot = rev[sm.tile];
+      if (ot === undefined) return null;
+      allMoves.push({ tile: ot });
+    }
+    return allMoves;
+  }
+
+  // ---- Main solve ----
+  async function solve(board, size, prog) {
+    if (size <= 4) return await solveWithFallback(board, size, prog, 15000);
+
+    // 5×5: row+col reduction then solveWithFallback on 4×4
     const DL = Date.now() + 600000;
     let cur = board.slice();
     const allMoves = [];
     if (prog) { prog.maxBound = 4; prog.bound = 0; }
 
-    // Phase 1: Solve first 2 row tiles (positions 0,1)
+    // Phase 1: row 1-2
     const goal1 = new Set([0, 1]);
     if (prog) prog.bound = 1;
     let moves = await phasedSearch(cur, size, goal1, new Set(), cur, DL, prog);
-    if (!moves) { console.error('[p15] Phase 1 FAILED'); return null; }
+    if (!moves) return null;
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
-    console.log('[p15] Phase 1 done (row 1-2).', moves.length, 'moves. Board:', cur.join(','));
+    // console.log('[p15] Phase 1 done. Board:', cur.join(','));
 
-    // Phase 2: Lock first 2, solve last 3 row tiles (positions 2,3,4)
+    // Phase 2: row 3-5 (lock 0,1)
     const goal2 = new Set([2, 3, 4]);
     const lock2 = new Set([0, 1]);
     const orig2 = cur.slice();
     if (prog) prog.bound = 2;
     moves = await phasedSearch(cur, size, goal2, lock2, orig2, DL, prog);
-    if (!moves) { console.error('[p15] Phase 2 FAILED'); return null; }
+    if (!moves) return null;
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
-    console.log('[p15] Phase 2 done (row 3-5).', moves.length, 'moves. Board:', cur.join(','));
+    // console.log('[p15] Phase 2 done. Board:', cur.join(','));
 
-    // Phase 3: Lock row 0, solve first column (positions 5,10,15,20)
+    // Phase 3: col (lock row 0)
     const goal3 = new Set([5, 10, 15, 20]);
     const lock3 = new Set([0, 1, 2, 3, 4]);
     const orig3 = cur.slice();
     if (prog) prog.bound = 3;
     moves = await phasedSearch(cur, size, goal3, lock3, orig3, DL, prog);
-    if (!moves) { console.error('[p15] Phase 3 FAILED'); return null; }
+    if (!moves) return null;
     for (const m of moves) { const z=cur.indexOf(0),ti=cur.indexOf(m.tile); [cur[z],cur[ti]]=[cur[ti],cur[z]]; }
     allMoves.push(...moves);
-    console.log('[p15] Phase 3 done (col).', moves.length, 'moves. Board:', cur.join(','));
+    // console.log('[p15] Phase 3 done. Board:', cur.join(','));
 
-    // Phase 4: Solve the 4×4 remainder.
-    // First try IDA* on the full 4×4 with 15s deadline.
-    // If that times out, recursively reduce: row → col → 3×3 IDA*.
+    // Phase 4: extract 4×4 and solveWithFallback
     const subSize = size - 1;
-    const extractMapped = (b) => {
-      const sb = [];
-      for (let r = 1; r < size; r++)
-        for (let c = 1; c < size; c++)
-          sb.push(b[r*size + c]);
-      const m = {0: 0};
-      for (let r = 1; r < size; r++)
-        for (let c = 1; c < size; c++)
-          m[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
-      return sb.map(v => m[v] !== undefined ? m[v] : 0);
-    };
-    // Apply moves on original board: moves use mapped tile values,
-    // we look up corresponding original value from sub-board positions
-    // Apply moves sequentially: each step swaps empty with the target tile
-    // in BOTH the mapped board and the original board, tracking positions.
-    const applyMappedMoves = (moves, b, mapped) => {
-      const allM = [];
-      for (const sm of moves) {
-        const subPos = mapped.indexOf(sm.tile);
-        const mz = mapped.indexOf(0);
-        [mapped[mz], mapped[subPos]] = [mapped[subPos], mapped[mz]];
-        // Corresponding original position
-        const origPos = (Math.floor(subPos/subSize)+1)*size + (subPos%subSize)+1;
-        const oz = b.indexOf(0), oti = b.indexOf(b[origPos]);
-        [b[oz], b[oti]] = [b[oti], b[oz]];
-        allM.push({ tile: b[oz] }); // tile that moved (now at previous empty spot)
-      }
-      return allM;
-    };
+    const subBoard = [];
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        subBoard.push(cur[r*size + c]);
 
-    let mapped = extractMapped(cur);
-    console.log('[p15] Phase 4 start. 4x4 mapped:', mapped.join(','));
+    const valMap = {0: 0};
+    for (let r = 1; r < size; r++)
+      for (let c = 1; c < size; c++)
+        valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
+
+    const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
     if (prog) prog.bound = 4;
+    const subMoves = await solveWithFallback(mapped, subSize, prog, 15000);
+    if (!subMoves) return null;
 
-    // Try full 4×4 IDA* first
-    let subMoves = await solveIDA(mapped, subSize, prog);
-
-    if (!subMoves) {
-      console.log('[p15] Phase 4 IDA* timed out, reducing to row+col+3x3');
-
-      // Phase 4a: Solve first 2 tiles of 4×4 row (sub-positions 0,1)
-      let ms = await phasedSearch(mapped, subSize, new Set([0,1]), new Set(), mapped, DL, prog);
-      if (!ms) { console.error('[p15] Phase 4a FAILED'); return null; }
-      allMoves.push(...applyMappedMoves(ms, cur, mapped));
-      console.log('[p15] Phase 4a done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
-
-      // Phase 4b: Solve last 2 tiles of 4×4 row (sub-positions 2,3)
-      ms = await phasedSearch(mapped, subSize, new Set([2,3]), new Set([0,1]), mapped, DL, prog);
-      if (!ms) { console.error('[p15] Phase 4b FAILED'); return null; }
-      allMoves.push(...applyMappedMoves(ms, cur, mapped));
-      console.log('[p15] Phase 4b done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
-
-      // Phase 4c: Solve first col of 4×4 (sub-positions 4,8,12 — skip row 0)
-      ms = await phasedSearch(mapped, subSize, new Set([4,8,12]), new Set([0,1,2,3]), mapped, DL, prog);
-      if (!ms) { console.error('[p15] Phase 4c FAILED'); return null; }
-      allMoves.push(...applyMappedMoves(ms, cur, mapped));
-      console.log('[p15] Phase 4c done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
-
-      // Phase 4d: Extract 3×3 and IDA*
-      const tinySize = subSize - 1;
-      const tinyBoard = [];
-      for (let r = 1; r < subSize; r++)
-        for (let c = 1; c < subSize; c++)
-          tinyBoard.push(mapped[r*subSize + c]);
-
-      const tinyMap = {0: 0};
-      for (let r = 1; r < subSize; r++)
-        for (let c = 1; c < subSize; c++)
-          tinyMap[r*subSize+c+1] = (r-1)*tinySize + (c-1) + 1;
-
-      const tinyMapped = tinyBoard.map(v => tinyMap[v] !== undefined ? tinyMap[v] : 0);
-      console.log('[p15] Phase 4d start. 3x3 mapped:', tinyMapped.join(','));
-      const tinyMoves = await solveIDA(tinyMapped, tinySize);
-      if (!tinyMoves) { console.error('[p15] Phase 4d IDA* FAILED'); return null; }
-
-      // Map 3×3 moves → 4×4 mapped values → original values
-      const tinyRev = {};
-      for (const [ov, sv] of Object.entries(tinyMap)) tinyRev[sv] = parseInt(ov);
-      for (const tm of tinyMoves) {
-        const st = tinyRev[tm.tile]; // 4×4 mapped sub-tile value
-        if (st === undefined) return null;
-        const subPos = mapped.indexOf(st);
-        const origPos = (Math.floor(subPos/subSize)+1)*size + (subPos%subSize)+1;
-        const origVal = cur[origPos];
-        const z = cur.indexOf(0), ti = cur.indexOf(origVal);
-        [cur[z], cur[ti]] = [cur[ti], cur[z]];
-        allMoves.push({ tile: origVal });
-      }
-    } else {
-      // 4×4 IDA* succeeded directly — map back to original values
-      for (const sm of subMoves) {
-        const subPos = mapped.indexOf(sm.tile);
-        const origPos = (Math.floor(subPos/subSize)+1)*size + (subPos%subSize)+1;
-        const origVal = cur[origPos];
-        const z = cur.indexOf(0), ti = cur.indexOf(origVal);
-        [cur[z], cur[ti]] = [cur[ti], cur[z]];
-        allMoves.push({ tile: origVal });
-      }
+    const vToOv = {};
+    for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
+    for (const sm of subMoves) {
+      const ot = vToOv[sm.tile];
+      if (ot === undefined) return null;
+      allMoves.push({ tile: ot });
     }
-    console.log('[p15] Phase 4 done. Total moves:', allMoves.length);
-
     return allMoves;
   }
 
