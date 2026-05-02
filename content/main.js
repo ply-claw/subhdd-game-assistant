@@ -783,17 +783,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // Store game remaining counts to chrome.storage.local for cross-page access
 function cacheCheckinStatus() {
-  // Check if the checkin button is present and enabled (not yet checked in)
-  const btns = document.querySelectorAll('a[href*="checkin"], button');
+  // Checkin page has claim-btn (id) and today-status (id)
+  const claimBtn = document.getElementById('claim-btn');
+  const todayStatus = document.getElementById('today-status');
   let status = '?';
-  for (const btn of btns) {
-    const text = (btn.textContent || '').trim();
-    if (text.includes('签到') || text.includes('已签')) {
-      status = btn.disabled || text.includes('已签') ? 'done' : 'pending';
-      break;
-    }
+  if (claimBtn) {
+    status = claimBtn.disabled ? 'done' : 'pending';
+  } else if (todayStatus) {
+    const text = (todayStatus.textContent || '').trim();
+    status = text.includes('已签') || text.includes('完成') ? 'done' : 'pending';
   }
-  chrome.storage.local.set({ ga_checkin: status, ga_data_date: new Date().toDateString() });
+  if (status !== '?') {
+    chrome.storage.local.set({ ga_checkin: status, ga_data_date: new Date().toDateString() });
+  }
 }
 
 function cacheGameCounts() {
@@ -949,6 +951,7 @@ async function checkBgRunner() {
 function init() {
   currentGameType = detectGame();
   if (!currentGameType) {
+    cacheCheckinStatus();
     checkBgRunner();
     return;
   }
