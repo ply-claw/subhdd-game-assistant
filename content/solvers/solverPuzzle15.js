@@ -104,7 +104,7 @@ const SolverPuzzle15 = (() => {
     if (done) return [];
     let bound = heuristic(board, size);
     const MAX = 80;
-    const DL = Date.now() + 15000;
+    const DL = Date.now() + 30000;
     const iter = {val:0};
     if (prog) { prog.maxBound = MAX; prog.bound = bound; prog.iter = 0; }
     try {
