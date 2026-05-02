@@ -875,7 +875,10 @@ async function checkBgRunner() {
 
       const ppId = currentGameType === 'tile' ? 'tile-desk' : 'play-panel';
       const playPanel = document.getElementById(ppId);
-      const hasActiveSession = playPanel && !playPanel.hidden;
+      const statusPill = document.getElementById('page-status');
+      const statusText = statusPill?.textContent?.trim() || '';
+      const hasActiveSession = (playPanel && !playPanel.hidden) ||
+        statusText.includes('继续未完局') || statusText.includes('进行中');
 
       if (!hasActiveSession) {
         // No active session — need to select difficulty first
