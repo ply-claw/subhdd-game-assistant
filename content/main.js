@@ -905,7 +905,8 @@ async function checkBgRunner() {
         if (clicked) break;
       }
       await new Promise(r => setTimeout(r, 2000));
-      chrome.runtime.sendMessage({ type: 'gameDone', result: { status: 'won', game: 'checkin' } });
+      cacheCheckinStatus();
+      chrome.runtime.sendMessage({ type: 'gameAllDone', result: { game: 'checkin' } });
       return true;
     }
 
