@@ -781,23 +781,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-async function getDailyStatus() {
-  const remaining = { checkin: '?', memory: '?', sudoku: '?', puzzle15: '?', tile: '?', puzzle2048: '?' };
-  // Sum remaining counts from difficulty cards on current page
+// Store game remaining counts to chrome.storage.local for cross-page access
+function cacheGameCounts() {
+  if (!currentGameType) return;
+  const map = { 'puzzle2048':'puzzle2048','memory':'memory','sudoku':'sudoku','puzzle15':'puzzle15','tile':'tile' };
+  const key = map[currentGameType];
+  if (!key) return;
   let totalLeft = 0;
   document.querySelectorAll('.diff-remaining').forEach(el => {
     const m = (el.textContent || '').match(/(\d+)\s*\/\s*(\d+)/);
     if (m) totalLeft += parseInt(m[1]);
   });
-  // Assign total to the current game type
-  if (totalLeft > 0 && currentGameType) {
-    const map = { 'puzzle2048':'puzzle2048','memory':'memory','sudoku':'sudoku','puzzle15':'puzzle15','tile':'tile' };
-    const key = map[currentGameType];
-    if (key) remaining[key] = totalLeft;
-  }
-  // Also read balance from any page
+  chrome.storage.local.set({ ['ga_remaining_' + key]: totalLeft });
+  // Also cache balance
   const balEl = document.querySelector('[class*="balance"], [id*="balance"]');
-  return { remaining, balance: balEl?.textContent?.replace(/[^0-9.]/g,'') || '—' };
+  if (balEl) chrome.storage.local.set({ ga_balance: balEl.textContent.replace(/[^0-9.]/g,'') || '—' });
+}
+
+async function getDailyStatus() {
+  const keys = ['ga_remaining_checkin','ga_remaining_memory','ga_remaining_sudoku','ga_remaining_puzzle15','ga_remaining_tile','ga_remaining_puzzle2048'];
+  const data = await chrome.storage.local.get(keys.concat('ga_balance'));
+  return {
+    remaining: {
+      checkin: data.ga_remaining_checkin ?? '?',
+      memory: data.ga_remaining_memory ?? '?',
+      sudoku: data.ga_remaining_sudoku ?? '?',
+      puzzle15: data.ga_remaining_puzzle15 ?? '?',
+      tile: data.ga_remaining_tile ?? '?',
+      puzzle2048: data.ga_remaining_puzzle2048 ?? '?',
+    },
+    balance: data.ga_balance || '—',
+  };
 }
 
 // ---- Init ----
@@ -912,6 +926,7 @@ function init() {
   createPanel();
   updatePanel();
   startPolling();
+  setTimeout(cacheGameCounts, 2000); // wait for difficulty cards to render
 
   checkBgRunner().then(ran => {
     if (!ran) {
