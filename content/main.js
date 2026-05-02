@@ -363,6 +363,29 @@ function stopPolling() {
 let autoPlayRunning = false;
 let autoPlayStoppedFlag = false;
 
+// Cache for solver solutions: { boardKey: { solution, timestamp } }
+const solutionCache = {};
+function cacheKey(state) {
+  if (!state || !state.hasActiveSession) return null;
+  const s = state.session;
+  if (currentGameType === 'puzzle15') return (s.board || []).join(',');
+  if (currentGameType === 'sudoku') return (s.givens || []).join(',');
+  if (currentGameType === 'tile') {
+    // For tile, use the full tile ID list
+    const tiles = SolverTile.getAllTiles ? SolverTile.getAllTiles() : [];
+    return tiles.map(t => t.id).sort().join(',');
+  }
+  return null;
+}
+function getCachedSolution() {
+  const key = cacheKey(currentState);
+  return key && solutionCache[key] ? solutionCache[key].solution : null;
+}
+function setCachedSolution(solution) {
+  const key = cacheKey(currentState);
+  if (key) solutionCache[key] = { solution, timestamp: Date.now() };
+}
+
 function bindButtons() {
   const hintBtn = document.getElementById('ga-btn-show-hint');
   const autoBtn = document.getElementById('ga-btn-auto');
@@ -420,6 +443,15 @@ async function showHint() {
     }
     case 'puzzle15': {
       if (!sess.board || !sess.size) return;
+      const cached = getCachedSolution();
+      if (cached) {
+        const stEl = document.getElementById('ga-steps');
+        if (stEl) stEl.innerHTML = cached.slice(0, 30).map((s, i) =>
+          `<div class="ga-step">${i + 1}. 移动 ${s.tile}</div>`).join('') +
+          (cached.length > 30 ? `<div class="ga-step">... 共 ${cached.length} 步</div>` : '');
+        Panel.showHint(`(缓存) 共 ${cached.length} 步`);
+        break;
+      }
       const el = document.getElementById('ga-steps');
       if (el) el.innerHTML = '<div class="ga-solving-indicator"><span class="ga-spinner"></span> 正在解算<span class="ga-dots">...</span><div class="ga-progress"><div class="ga-progress-fill" id="ga-ida-progress" style="width:0%"></div></div><div id="ga-ida-info" style="font-size:10px;color:#94a3b8;margin-top:4px"></div></div>';
       Panel.showHint('正在解算...');
@@ -446,6 +478,7 @@ async function showHint() {
         el.innerHTML = sol.slice(0, 30).map((s, i) =>
           `<div class="ga-step">${i + 1}. 移动 ${s.tile}</div>`).join('') +
           (sol.length > 30 ? `<div class="ga-step">... 共 ${sol.length} 步</div>` : '');
+        setCachedSolution(sol);
         Panel.showHint(`解算完成，耗时 ${secs}s · 共 ${sol.length} 步`);
       } else if (el) {
         if (sol === null) {
@@ -522,29 +555,37 @@ async function startAutoPlay() {
       case 'puzzle15': {
         let s = readGameState();
         if (!s.hasActiveSession) break;
-        const el = document.getElementById('ga-steps');
-        if (el) el.textContent = '';
-        Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
-        const prog = { maxBound: 200, bound: 0, iter: 0 };
-        const uiTimer = setInterval(() => {
-          const pct = prog.maxBound > 0 ? Math.round(prog.bound / prog.maxBound * 100) : 0;
-          const bar = document.getElementById('ga-ida-progress');
-          const info = document.getElementById('ga-ida-info');
-          if (bar) bar.style.width = Math.min(pct, 99) + '%';
-          if (info) {
-          const labels = {1:'行①-②', 2:'行③-⑤', 3:'首列', 4:'4×4'};
-          const phase = labels[prog.bound] || `阶段${prog.bound}`;
-          if (prog.maxBound > 100) info.textContent = `${phase} · ${(prog.iter/1000).toFixed(0)}k 节点`;
-          else info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+        // Check cache
+        let sol = getCachedSolution();
+        if (!sol) {
+          // Not cached — solve now
+          const stEl = document.getElementById('ga-steps');
+          if (stEl) stEl.textContent = '';
+          Panel.showHint('正在解算...'); Panel.setStatus('解算中...', 'busy');
+          const prog = { maxBound: 200, bound: 0, iter: 0 };
+          const uiTimer = setInterval(() => {
+            const pct = prog.maxBound > 0 ? Math.round(prog.bound / prog.maxBound * 100) : 0;
+            const bar = document.getElementById('ga-ida-progress');
+            const info = document.getElementById('ga-ida-info');
+            if (bar) bar.style.width = Math.min(pct, 99) + '%';
+            if (info) {
+              const labels = {1:'行①-②', 2:'行③-⑤', 3:'首列', 4:'4×4'};
+              const phase = labels[prog.bound] || `阶段${prog.bound}`;
+              if (prog.maxBound > 100) info.textContent = `${phase} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+              else info.textContent = `深度 ${prog.bound}/${prog.maxBound} · ${(prog.iter/1000).toFixed(0)}k 节点`;
+            }
+          }, 500);
+          await new Promise(r => setTimeout(r, 50));
+          const t0 = Date.now();
+          sol = await SolverPuzzle15.solve(s.session.board, s.session.size, prog);
+          clearInterval(uiTimer);
+          const secs = ((Date.now() - t0) / 1000).toFixed(1);
+          if (!sol) { Panel.showHint(`超时未解 (耗时 ${secs}s，深度 ${prog.bound}/${prog.maxBound}，${(prog.iter/1000).toFixed(0)}k 节点)`); Panel.setStatus('进行中', 'ready'); break; }
+          setCachedSolution(sol);
+          Panel.showHint(`解算完成 ${secs}s · 共 ${sol.length} 步`);
+        } else {
+          Panel.showHint(`(缓存) 共 ${sol.length} 步`);
         }
-        }, 500);
-        await new Promise(r => setTimeout(r, 50));
-        const t0 = Date.now();
-        let sol = await SolverPuzzle15.solve(s.session.board, s.session.size, prog);
-        clearInterval(uiTimer);
-        const secs = ((Date.now() - t0) / 1000).toFixed(1);
-        if (!sol) { Panel.showHint(`超时未解 (耗时 ${secs}s，深度 ${prog.bound}/${prog.maxBound}，${(prog.iter/1000).toFixed(0)}k 节点)`); Panel.setStatus('进行中', 'ready'); break; }
-        Panel.showHint(`解算完成 ${secs}s · 共 ${sol.length} 步`);
         for (let i = 0; i < sol.length; i++) {
           if (autoPlayStoppedFlag) break;
           const step = sol[i];
