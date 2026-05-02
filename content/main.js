@@ -912,71 +912,77 @@ async function checkBgRunner() {
     if (resp.phase === 'game') {
       currentGameType = detectGame();
       if (!currentGameType) return false;
-      console.log('[GA] bg-runner:', resp.gameType, resp.difficulty);
+      console.log('[GA] bg-runner:', resp.gameType, 'diffs:', (resp.difficulties||[]).join(','));
 
       const ppId = currentGameType === 'tile' ? 'tile-desk' : 'play-panel';
+
+      // Complete any existing active session first
       const playPanel = document.getElementById(ppId);
-      const hasActiveSession = playPanel && !playPanel.hidden;
-
-      if (!hasActiveSession) {
-        // No active session — need to select difficulty first
-        let btns = [];
-        for (let i = 0; i < 50; i++) {
-          await new Promise(r => setTimeout(r, 500));
-          const grid = document.getElementById('difficulty-grid');
-          if (!grid) continue;
-          btns = grid.querySelectorAll('button');
-          if (btns.length > 0) break;
-          const altBtns = document.querySelectorAll('.p15-diff-card, .mem-diff-card, .sudoku-diff-card, .p2048-diff-card');
-          if (altBtns.length > 0) { btns = altBtns; break; }
-        }
-        if (btns.length === 0) { console.warn('[GA] no diff buttons'); return false; }
-
-        const btnIdx = btns.length - 1 - (resp.diffIdx || 0);
-        if (btnIdx < 0 || btnIdx >= btns.length) { console.warn('[GA] btn idx out of range'); return false; }
-        if (btns[btnIdx].disabled) {
-          console.log('[GA] diff', resp.difficulty, 'disabled, skipping');
-          chrome.runtime.sendMessage({
-            type: 'gameDone', result: { status: 'skipped', game: currentGameType, difficulty: resp.difficulty },
-          });
-          return true;
-        }
-        btns[btnIdx].click();
-
-        // Wait for game to start
-        for (let i = 0; i < 40; i++) {
-          await new Promise(r => setTimeout(r, 300));
-          const pp = document.getElementById(ppId);
-          if (pp && !pp.hidden) break;
-        }
-
-        // Wait for active session to appear
-        for (let i = 0; i < 30; i++) {
-          await new Promise(r => setTimeout(r, 300));
-          const s = readGameState();
-          if (s && s.hasActiveSession) break;
-        }
-      } else {
-        console.log('[GA] active session already present, completing it');
+      if (playPanel && !playPanel.hidden) {
+        console.log('[GA] active session present, completing first');
+        createPanel(); updatePanel(); startPolling();
+        autoPlayStoppedFlag = false; autoPlayRunning = false;
+        await startAutoPlay();
       }
 
-      createPanel();
-      updatePanel();
-      startPolling();
-      autoPlayStoppedFlag = false;
-      autoPlayRunning = false;
-      await startAutoPlay();
+      // Loop through all difficulties for this game in one tab
+      const diffs = resp.difficulties || [resp.difficulty];
+      for (const diff of diffs) {
+        // Keep playing this difficulty until remaining = 0
+        let keepGoing = true;
+        while (keepGoing && !autoPlayStoppedFlag) {
+          // Wait for difficulty panel
+          for (let i = 0; i < 50; i++) {
+            await new Promise(r => setTimeout(r, 500));
+            const dp = document.getElementById('difficulty-panel');
+            if (dp && !dp.hidden) break;
+            // Click replay if result is showing
+            const replay = document.getElementById('replay-btn') || document.getElementById('result-close');
+            const overlay = document.getElementById('result-overlay') || document.getElementById('result-card');
+            if (replay && overlay && !overlay.hidden) {
+              replay.click();
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
 
-      const s = readGameState();
-      const won = !!(s?.session?.won || document.getElementById('page-status')?.classList.contains('is-win'));
-      chrome.runtime.sendMessage({
-        type: 'gameDone',
-        result: {
-          status: won ? 'won' : 'failed',
-          game: currentGameType,
-          difficulty: resp.difficulty,
-        },
-      });
+          // Find the difficulty button by text match
+          let card = null;
+          const allBtns = document.querySelectorAll('#difficulty-grid button, [class*="diff-card"]');
+          for (const btn of allBtns) {
+            const label = btn.textContent || '';
+            const matchNames = { easy:['入门','简单'], normal:['普通','经典'], hard:['困难','进阶','挑战'], hell:['地狱'], classic:['经典'], jumbo:['挑战','jumbo'], mini:['入门','mini'], expert:['专家'] };
+            const names = matchNames[diff] || [diff];
+            if (names.some(n => label.includes(n))) { card = btn; break; }
+          }
+          if (!card) { keepGoing = false; break; }
+          if (card.disabled) { keepGoing = false; break; }
+
+          card.click();
+          console.log('[GA] playing', diff);
+
+          // Wait for game start
+          for (let w = 0; w < 40; w++) {
+            await new Promise(r => setTimeout(r, 300));
+            const pp = document.getElementById(ppId);
+            if (pp && !pp.hidden) break;
+          }
+          for (let w = 0; w < 30; w++) {
+            await new Promise(r => setTimeout(r, 300));
+            const s = readGameState();
+            if (s && s.hasActiveSession) break;
+          }
+
+          createPanel(); updatePanel(); startPolling();
+          autoPlayStoppedFlag = false; autoPlayRunning = false;
+          await startAutoPlay();
+
+          // After game, card might be disabled now (0 remaining)
+          if (card.disabled) keepGoing = false;
+        }
+      }
+
+      // All difficulties done
+      chrome.runtime.sendMessage({ type: 'gameAllDone', result: { game: currentGameType } });
       return true;
     }
   } catch (e) {

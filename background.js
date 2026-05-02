@@ -52,41 +52,25 @@ async function startDailyRun(depth) {
   await setRunState(state);
 }
 
-// ---- Handle game completion from content script ----
-async function onGameDone(tabId, result) {
+// ---- Handle game completion (all difficulties done in one tab) ----
+async function onGameAllDone(tabId, result) {
   const state = await getRunState();
   if (!state || !state.running) return;
 
-  // Record result
-  state.results.push(result);
+  state.results.push({ status: 'done', game: result.game });
 
   // Close the tab
   try { await chrome.tabs.remove(tabId); } catch (e) {}
 
-  // Stop on failure
-  if (result.status === 'failed') {
-    notify('每日全通中断', `${result.game} ${result.difficulty} 失败，已停止`);
-    await clearRunState();
-    return;
-  }
-
-  // Determine next action
+  // Move to checkin-to-game or next game
   if (state.phase === 'checkin') {
-    // Move to first game
     state.phase = 'game';
     state.gameIdx = 0;
-    state.diffIdx = 0;
-  } else if (state.phase === 'game') {
-    const g = GAMES[state.gameIdx];
-    if (g && state.diffIdx + 1 < g.diffs.length) {
-      state.diffIdx++; // next difficulty, same game
-    } else {
-      state.gameIdx++;
-      state.diffIdx = 0; // next game
-    }
+  } else {
+    state.gameIdx++;
   }
 
-  // Check if all done
+  // All done?
   if (state.gameIdx >= GAMES.length) {
     await finishRun(state);
     return;
@@ -95,8 +79,7 @@ async function onGameDone(tabId, result) {
   // Open next game tab
   await setRunState(state);
   const g = GAMES[state.gameIdx];
-  const url = BASE + g.url;
-  const tab = await chrome.tabs.create({ url, active: true });
+  const tab = await chrome.tabs.create({ url: BASE + g.url, active: true });
 }
 
 async function finishRun(state) {
@@ -121,15 +104,12 @@ async function getRunInfo(tabId) {
   if (state.phase === 'game') {
     const g = GAMES[state.gameIdx];
     if (!g) return null;
-    const diff = g.diffs[state.diffIdx];
-    if (!diff) return null;
     return {
       phase: 'game',
       gameType: g.type,
-      difficulty: diff,
+      difficulties: g.diffs,
       depth: state.depth,
       gameIdx: state.gameIdx,
-      diffIdx: state.diffIdx,
     };
   }
   return null;
@@ -148,7 +128,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
   if (msg.type === 'gameDone') {
-    onGameDone(sender.tab.id, msg.result);
+    sendResponse({ ok: true });
+    return true; // progress update, background tracks silently
+  }
+  if (msg.type === 'gameAllDone') {
+    onGameAllDone(sender.tab.id, msg.result);
     sendResponse({ ok: true });
     return true;
   }
