@@ -924,14 +924,26 @@ async function checkBgRunner() {
       startPolling();
       autoPlayStoppedFlag = false;
       autoPlayRunning = false;
-      await startAutoPlay();
+
+      // Start auto-play with a timeout (5 min per game)
+      const playTimeout = setTimeout(() => {
+        autoPlayStoppedFlag = true;
+        console.warn('[GA] auto-play timeout for', currentGameType);
+      }, 300000);
+
+      try {
+        await startAutoPlay();
+      } catch (e) {
+        console.error('[GA] auto-play error:', e.message);
+      }
+      clearTimeout(playTimeout);
 
       const s = readGameState();
       const won = !!(s?.session?.won || document.getElementById('page-status')?.classList.contains('is-win'));
       chrome.runtime.sendMessage({
         type: 'gameDone',
         result: {
-          status: won ? 'won' : 'completed',
+          status: won ? 'won' : 'timeout',
           game: currentGameType,
           difficulty: resp.difficulty,
         },
