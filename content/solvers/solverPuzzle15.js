@@ -104,7 +104,7 @@ const SolverPuzzle15 = (() => {
     if (done) return [];
     let bound = heuristic(board, size);
     const MAX = 80;
-    const DL = Date.now() + 60000;
+    const DL = Date.now() + 15000;
     const iter = {val:0};
     if (prog) { prog.maxBound = MAX; prog.bound = bound; prog.iter = 0; }
     try {
@@ -223,30 +223,111 @@ const SolverPuzzle15 = (() => {
     allMoves.push(...moves);
     console.log('[p15] Phase 3 done (col).', moves.length, 'moves. Board:', cur.join(','));
 
-    // Phase 4: Lock row 0 + col 0, extract 4×4 and IDA*
+    // Phase 4: Solve the 4×4 remainder.
+    // First try IDA* on the full 4×4 with 15s deadline.
+    // If that times out, recursively reduce: row → col → 3×3 IDA*.
     const subSize = size - 1;
-    const subBoard = [];
-    for (let r = 1; r < size; r++)
-      for (let c = 1; c < size; c++)
-        subBoard.push(cur[r*size + c]);
+    const extractMapped = (b) => {
+      const sb = [];
+      for (let r = 1; r < size; r++)
+        for (let c = 1; c < size; c++)
+          sb.push(b[r*size + c]);
+      const m = {0: 0};
+      for (let r = 1; r < size; r++)
+        for (let c = 1; c < size; c++)
+          m[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
+      return sb.map(v => m[v] !== undefined ? m[v] : 0);
+    };
+    // Apply moves on original board: moves use mapped tile values,
+    // we look up corresponding original value from sub-board positions
+    // Apply moves sequentially: each step swaps empty with the target tile
+    // in BOTH the mapped board and the original board, tracking positions.
+    const applyMappedMoves = (moves, b, mapped) => {
+      const allM = [];
+      for (const sm of moves) {
+        const subPos = mapped.indexOf(sm.tile);
+        const mz = mapped.indexOf(0);
+        [mapped[mz], mapped[subPos]] = [mapped[subPos], mapped[mz]];
+        // Corresponding original position
+        const origPos = (Math.floor(subPos/subSize)+1)*size + (subPos%subSize)+1;
+        const oz = b.indexOf(0), oti = b.indexOf(b[origPos]);
+        [b[oz], b[oti]] = [b[oti], b[oz]];
+        allM.push({ tile: b[oz] }); // tile that moved (now at previous empty spot)
+      }
+      return allM;
+    };
 
-    const valMap = {0: 0};
-    for (let r = 1; r < size; r++)
-      for (let c = 1; c < size; c++)
-        valMap[r*size+c+1] = (r-1)*subSize + (c-1) + 1;
-
-    const mapped = subBoard.map(v => valMap[v] !== undefined ? valMap[v] : 0);
-    console.log('[p15] Phase 4 start. 4x4 mapped:', mapped.join(','), 'valMap size:', Object.keys(valMap).length);
+    let mapped = extractMapped(cur);
+    console.log('[p15] Phase 4 start. 4x4 mapped:', mapped.join(','));
     if (prog) prog.bound = 4;
-    const subMoves = await solveIDA(mapped, subSize, prog);
-    if (!subMoves) { console.error('[p15] Phase 4 IDA* FAILED. Mapped board:', mapped.join(',')); return null; }
 
-    const vToOv = {};
-    for (const [ov, sv] of Object.entries(valMap)) vToOv[sv] = parseInt(ov);
-    for (const sm of subMoves) {
-      const ot = vToOv[sm.tile];
-      if (ot === undefined) return null;
-      allMoves.push({ tile: ot });
+    // Try full 4×4 IDA* first
+    let subMoves = await solveIDA(mapped, subSize, prog);
+
+    if (!subMoves) {
+      console.log('[p15] Phase 4 IDA* timed out, reducing to row+col+3x3');
+
+      // Phase 4a: Solve first 2 tiles of 4×4 row (sub-positions 0,1)
+      let ms = await phasedSearch(mapped, subSize, new Set([0,1]), new Set(), mapped, DL, prog);
+      if (!ms) { console.error('[p15] Phase 4a FAILED'); return null; }
+      for (const m of ms) { const z=mapped.indexOf(0),ti=mapped.indexOf(m.tile); [mapped[z],mapped[ti]]=[mapped[ti],mapped[z]]; }
+      allMoves.push(...applyMappedMoves(ms, cur, mapped));
+      console.log('[p15] Phase 4a done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
+
+      // Phase 4b: Solve last 2 tiles of 4×4 row (sub-positions 2,3)
+      ms = await phasedSearch(mapped, subSize, new Set([2,3]), new Set([0,1]), mapped, DL, prog);
+      if (!ms) { console.error('[p15] Phase 4b FAILED'); return null; }
+      for (const m of ms) { const z=mapped.indexOf(0),ti=mapped.indexOf(m.tile); [mapped[z],mapped[ti]]=[mapped[ti],mapped[z]]; }
+      allMoves.push(...applyMappedMoves(ms, cur, mapped));
+      console.log('[p15] Phase 4b done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
+
+      // Phase 4c: Solve first col of 4×4 (sub-positions 4,8,12 — skip row 0)
+      ms = await phasedSearch(mapped, subSize, new Set([4,8,12]), new Set([0,1,2,3]), mapped, DL, prog);
+      if (!ms) { console.error('[p15] Phase 4c FAILED'); return null; }
+      for (const m of ms) { const z=mapped.indexOf(0),ti=mapped.indexOf(m.tile); [mapped[z],mapped[ti]]=[mapped[ti],mapped[z]]; }
+      allMoves.push(...applyMappedMoves(ms, cur, mapped));
+      console.log('[p15] Phase 4c done. Mapped:', mapped.join(','), 'Board:', cur.join(','));
+
+      // Phase 4d: Extract 3×3 and IDA*
+      const tinySize = subSize - 1;
+      const tinyBoard = [];
+      for (let r = 1; r < subSize; r++)
+        for (let c = 1; c < subSize; c++)
+          tinyBoard.push(mapped[r*subSize + c]);
+
+      const tinyMap = {0: 0};
+      for (let r = 1; r < subSize; r++)
+        for (let c = 1; c < subSize; c++)
+          tinyMap[r*subSize+c+1] = (r-1)*tinySize + (c-1) + 1;
+
+      const tinyMapped = tinyBoard.map(v => tinyMap[v] !== undefined ? tinyMap[v] : 0);
+      console.log('[p15] Phase 4d start. 3x3 mapped:', tinyMapped.join(','));
+      const tinyMoves = await solveIDA(tinyMapped, tinySize);
+      if (!tinyMoves) { console.error('[p15] Phase 4d IDA* FAILED'); return null; }
+
+      // Map 3×3 moves → 4×4 mapped values → original values
+      const tinyRev = {};
+      for (const [ov, sv] of Object.entries(tinyMap)) tinyRev[sv] = parseInt(ov);
+      for (const tm of tinyMoves) {
+        const st = tinyRev[tm.tile]; // 4×4 mapped sub-tile value
+        if (st === undefined) return null;
+        const subPos = mapped.indexOf(st);
+        const origPos = (Math.floor(subPos/subSize)+1)*size + (subPos%subSize)+1;
+        const origVal = cur[origPos];
+        const z = cur.indexOf(0), ti = cur.indexOf(origVal);
+        [cur[z], cur[ti]] = [cur[ti], cur[z]];
+        allMoves.push({ tile: origVal });
+      }
+    } else {
+      // 4×4 IDA* succeeded directly — map back to original values
+      for (const sm of subMoves) {
+        const subPos = mapped.indexOf(sm.tile);
+        const origPos = (Math.floor(subPos/subSize)+1)*size + (subPos%subSize)+1;
+        const origVal = cur[origPos];
+        const z = cur.indexOf(0), ti = cur.indexOf(origVal);
+        [cur[z], cur[ti]] = [cur[ti], cur[z]];
+        allMoves.push({ tile: origVal });
+      }
     }
     console.log('[p15] Phase 4 done. Total moves:', allMoves.length);
 
