@@ -78,19 +78,25 @@ async function refreshStatus() {
 
 function renderCounts(status) {
   const games = [
-    { key: 'checkin', emoji: '📅', name: '签到' },
     { key: 'memory', emoji: '🃏', name: '记忆翻牌' },
     { key: 'sudoku', emoji: '🔢', name: '数独' },
     { key: 'puzzle15', emoji: '🧮', name: '华容道' },
     { key: 'tile', emoji: '🐑', name: '羊了个羊' },
     { key: 'puzzle2048', emoji: '🧩', name: '2048' },
   ];
+  // Checkin status (not a count)
+  const cin = status.checkin;
+  const cinIcon = cin === 'done' ? '✅' : cin === 'pending' ? '⏳' : '❓';
+  const cinText = cin === 'done' ? '已签到' : cin === 'pending' ? '未签到' : '?';
+
+  let html = `<div class="count-row">${cinIcon} 📅 签到: ${cinText}</div>`;
   const rem = status.remaining || {};
-  countsEl.innerHTML = games.map((g) => {
+  html += games.map((g) => {
     const r = rem[g.key];
     const icon = r === 0 ? '✅' : (typeof r === 'number' && r > 0) ? '⏳' : '❓';
-    return `<div class="count-row">${icon} ${g.emoji} ${g.name}: ${r} 剩余</div>`;
+    return `<div class="count-row">${icon} ${g.emoji} ${g.name}: ${r === 0 ? '已完成' : r + ' 剩余'}</div>`;
   }).join('');
+  countsEl.innerHTML = html;
 }
 
 // Daily run

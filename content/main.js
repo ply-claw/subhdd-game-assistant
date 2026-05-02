@@ -782,6 +782,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // Store game remaining counts to chrome.storage.local for cross-page access
+function cacheCheckinStatus() {
+  // Check if the checkin button is present and enabled (not yet checked in)
+  const btns = document.querySelectorAll('a[href*="checkin"], button');
+  let status = '?';
+  for (const btn of btns) {
+    const text = (btn.textContent || '').trim();
+    if (text.includes('签到') || text.includes('已签')) {
+      status = btn.disabled || text.includes('已签') ? 'done' : 'pending';
+      break;
+    }
+  }
+  chrome.storage.local.set({ ga_checkin: status, ga_data_date: new Date().toDateString() });
+}
+
 function cacheGameCounts() {
   if (!currentGameType) return;
   const map = { 'puzzle2048':'puzzle2048','memory':'memory','sudoku':'sudoku','puzzle15':'puzzle15','tile':'tile' };
@@ -799,17 +813,17 @@ function cacheGameCounts() {
 }
 
 async function getDailyStatus() {
-  const keys = ['ga_remaining_checkin','ga_remaining_memory','ga_remaining_sudoku','ga_remaining_puzzle15','ga_remaining_tile','ga_remaining_puzzle2048'];
-  const data = await chrome.storage.local.get(keys.concat(['ga_balance','ga_data_date']));
+  const keys = ['ga_remaining_memory','ga_remaining_sudoku','ga_remaining_puzzle15','ga_remaining_tile','ga_remaining_puzzle2048'];
+  const data = await chrome.storage.local.get(keys.concat(['ga_balance','ga_data_date','ga_checkin']));
   const today = new Date().toDateString();
   // Expire data from previous days
   if (data.ga_data_date !== today) {
-    await chrome.storage.local.remove(keys.concat(['ga_balance','ga_data_date']));
-    return { remaining: { checkin:'?',memory:'?',sudoku:'?',puzzle15:'?',tile:'?',puzzle2048:'?' }, balance:'—' };
+    await chrome.storage.local.remove(keys.concat(['ga_balance','ga_data_date','ga_checkin']));
+    return { remaining: { memory:'?',sudoku:'?',puzzle15:'?',tile:'?',puzzle2048:'?' }, checkin:'?', balance:'—' };
   }
   return {
+    checkin: data.ga_checkin || '?',
     remaining: {
-      checkin: data.ga_remaining_checkin ?? '?',
       memory: data.ga_remaining_memory ?? '?',
       sudoku: data.ga_remaining_sudoku ?? '?',
       puzzle15: data.ga_remaining_puzzle15 ?? '?',
@@ -942,7 +956,11 @@ function init() {
   createPanel();
   updatePanel();
   startPolling();
-  setTimeout(cacheGameCounts, 2000); // wait for difficulty cards to render
+  // Cache checkin status (check button state)
+  setTimeout(() => {
+    cacheGameCounts();
+    cacheCheckinStatus();
+  }, 2000);
 
   checkBgRunner().then(ran => {
     if (!ran) {
