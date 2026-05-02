@@ -61,7 +61,14 @@ async function onGameDone(tabId, result) {
   state.results.push(result);
 
   // Close the tab
-  try { await chrome.tabs.remove(tabId); } catch (e) { /* tab may already be closed */ }
+  try { await chrome.tabs.remove(tabId); } catch (e) {}
+
+  // Stop on failure
+  if (result.status === 'failed') {
+    notify('每日全通中断', `${result.game} ${result.difficulty} 失败，已停止`);
+    await clearRunState();
+    return;
+  }
 
   // Determine next action
   if (state.phase === 'checkin') {
