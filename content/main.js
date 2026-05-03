@@ -916,9 +916,10 @@ async function checkBgRunner() {
       console.log('[GA] bg-runner:', resp.gameType, 'diffs:', (resp.difficulties||[]).join(','));
 
       const ppId = currentGameType === 'tile' ? 'tile-desk' : 'play-panel';
+      const playPanel = document.getElementById(ppId);
+      console.log('[GA] playPanel:', ppId, 'exists:', !!playPanel, 'hidden:', playPanel?.hidden);
 
       // Complete any existing active session first
-      const playPanel = document.getElementById(ppId);
       if (playPanel && !playPanel.hidden) {
         console.log('[GA] active session present, completing first');
         createPanel(); updatePanel(); startPolling();
@@ -929,10 +930,12 @@ async function checkBgRunner() {
       // Loop through all difficulties for this game in one tab
       const diffs = resp.difficulties || [resp.difficulty];
       for (const diff of diffs) {
+        console.log('[GA] processing diff:', diff);
         // Keep playing this difficulty until remaining = 0
         let keepGoing = true;
         while (keepGoing && !autoPlayStoppedFlag) {
           // Wait for difficulty panel
+          let waitedPanels = 0;
           for (let i = 0; i < 50; i++) {
             await new Promise(r => setTimeout(r, 500));
             const dp = document.getElementById('difficulty-panel');
@@ -955,11 +958,11 @@ async function checkBgRunner() {
             const names = matchNames[diff] || [diff];
             if (names.some(n => label.includes(n))) { card = btn; break; }
           }
-          if (!card) { keepGoing = false; break; }
-          if (card.disabled) { keepGoing = false; break; }
+          if (!card) { console.log('[GA] no card for', diff); keepGoing = false; break; }
+          if (card.disabled) { console.log('[GA] card disabled for', diff); keepGoing = false; break; }
 
           card.click();
-          console.log('[GA] playing', diff);
+          console.log('[GA] clicked', diff);
 
           // Wait for game start
           for (let w = 0; w < 40; w++) {
