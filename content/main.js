@@ -929,17 +929,21 @@ async function checkBgRunner() {
 
       // Loop through all difficulties for this game in one tab
       const diffs = resp.difficulties || [resp.difficulty];
+      const matchNames = { easy:['入门','简单'], normal:['普通','经典'], hard:['困难','进阶','挑战'], hell:['地狱'], classic:['经典'], jumbo:['挑战','jumbo'], mini:['入门','mini'], expert:['专家'] };
       for (const diff of diffs) {
         console.log('[GA] processing diff:', diff);
         // Keep playing this difficulty until remaining = 0
         let keepGoing = true;
         while (keepGoing && !autoPlayStoppedFlag) {
-          // Wait for difficulty panel
-          let waitedPanels = 0;
+          // Wait for difficulty panel OR active session
+          let gotPanel = false, gotActive = false;
           for (let i = 0; i < 50; i++) {
             await new Promise(r => setTimeout(r, 500));
             const dp = document.getElementById('difficulty-panel');
-            if (dp && !dp.hidden) break;
+            if (dp && !dp.hidden) { gotPanel = true; break; }
+            // If play panel appeared (active session resumed), complete it first
+            const pp = document.getElementById(ppId);
+            if (pp && !pp.hidden) { gotActive = true; break; }
             // Click replay if result is showing
             const replay = document.getElementById('replay-btn') || document.getElementById('result-close');
             const overlay = document.getElementById('result-overlay') || document.getElementById('result-card');
@@ -948,13 +952,21 @@ async function checkBgRunner() {
               await new Promise(r => setTimeout(r, 1000));
             }
           }
+          if (gotActive) {
+            console.log('[GA] active session appeared, completing');
+            createPanel(); updatePanel(); startPolling();
+            autoPlayStoppedFlag = false; autoPlayRunning = false;
+            await startAutoPlay();
+            cacheGameCounts();
+            continue; // go back to check difficulty panel
+          }
+          if (!gotPanel) { console.log('[GA] waited 25s, no panel'); keepGoing = false; break; }
 
           // Find the difficulty button by text match
           let card = null;
           const allBtns = document.querySelectorAll('#difficulty-grid button, [class*="diff-card"]');
           for (const btn of allBtns) {
             const label = btn.textContent || '';
-            const matchNames = { easy:['入门','简单'], normal:['普通','经典'], hard:['困难','进阶','挑战'], hell:['地狱'], classic:['经典'], jumbo:['挑战','jumbo'], mini:['入门','mini'], expert:['专家'] };
             const names = matchNames[diff] || [diff];
             if (names.some(n => label.includes(n))) { card = btn; break; }
           }
@@ -981,8 +993,10 @@ async function checkBgRunner() {
           await startAutoPlay();
           cacheGameCounts(); // update stored remaining counts
 
-          // After game, card might be disabled now (0 remaining)
-          if (card.disabled) keepGoing = false;
+          // Re-query — DOM may have refreshed after game
+          const freshCard = [...document.querySelectorAll('#difficulty-grid button, [class*="diff-card"]')]
+            .find(b => { const l = b.textContent || ''; const n = matchNames[diff] || [diff]; return n.some(x => l.includes(x)); });
+          if (freshCard?.disabled) keepGoing = false;
         }
       }
 
