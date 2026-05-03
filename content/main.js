@@ -773,9 +773,19 @@ function stopAutoPlay() {
 }
 
 function updateMemoryPanel(known, totalCards) {
+  // Sync matched cards from DOM to known (fixes first-card-not-matched bug)
+  document.querySelectorAll('.mem-card.is-matched').forEach(c => {
+    const idx = parseInt(c.dataset.index);
+    if (!isNaN(idx)) known.set(idx, 'matched');
+  });
+  // Sync face-up cards
+  document.querySelectorAll('.mem-card.is-face-up:not(.is-matched)').forEach(c => {
+    const idx = parseInt(c.dataset.index);
+    if (!isNaN(idx) && c.dataset.symbol) known.set(idx, c.dataset.symbol);
+  });
+
   const s = readGameState();
   const cols = s.session?.cols || 4;
-  const rows = s.session?.rows || 4;
   let html = '<div class="ga-memory-grid" style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:2px;font-size:10px;margin-bottom:8px">';
   for (let i = 0; i < totalCards; i++) {
     const val = known.get(i);
@@ -791,7 +801,6 @@ function updateMemoryPanel(known, totalCards) {
     const hint = document.getElementById('ga-hint');
     if (hint) hint.insertAdjacentHTML('beforebegin', html);
   }
-  // Set ID so we can find it next time
   const grid = document.querySelector('.ga-memory-grid');
   if (grid) grid.id = 'ga-memory-grid-ui';
   const matched = [...known.values()].filter(v => v === 'matched').length;
