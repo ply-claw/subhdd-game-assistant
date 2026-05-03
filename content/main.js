@@ -1008,6 +1008,7 @@ async function checkBgRunner() {
           // Re-query — DOM may have refreshed after game
           const freshCard = [...document.querySelectorAll('#difficulty-grid button, [class*="diff-card"]')]
             .find(b => { const l = b.textContent || ''; const n = matchNames[diff] || [diff]; return n.some(x => l.includes(x)); });
+          console.log("[GA] after play:", diff, "freshCard:", !!freshCard, "disabled:", freshCard?.disabled);
           if (freshCard?.disabled) keepGoing = false;
         }
       }
