@@ -929,7 +929,9 @@ async function checkBgRunner() {
       console.log('[GA] playPanel:', ppId, 'exists:', !!playPanel, 'hidden:', playPanel?.hidden);
 
       // Complete any existing active session first
-      if (playPanel && !playPanel.hidden) {
+      // Only treat as active session if there are actual tiles (tile-desk stays visible after game over)
+      const hasActiveTiles = currentGameType !== 'tile' || document.querySelectorAll('#tile-stage [data-id]').length > 0;
+      if (playPanel && !playPanel.hidden && hasActiveTiles) {
         console.log('[GA] active session present, completing first');
         createPanel(); updatePanel(); startPolling();
         autoPlayStoppedFlag = false; autoPlayRunning = false;
@@ -950,9 +952,10 @@ async function checkBgRunner() {
             await new Promise(r => setTimeout(r, 500));
             const dp = document.getElementById('difficulty-panel');
             if (dp && !dp.hidden) { gotPanel = true; break; }
-            // If play panel appeared (active session resumed), complete it first
+            // If play panel appeared AND has tiles (not just result overlay), complete it
             const pp = document.getElementById(ppId);
-            if (pp && !pp.hidden) { gotActive = true; break; }
+            const hasTiles = document.querySelectorAll('#tile-stage [data-id]').length > 0;
+            if (pp && !pp.hidden && (ppId !== 'tile-desk' || hasTiles)) { gotActive = true; break; }
             // Click replay if result is showing
             const replay = document.getElementById('replay-btn') || document.getElementById('result-close');
             const overlay = document.getElementById('result-overlay') || document.getElementById('result-card');
