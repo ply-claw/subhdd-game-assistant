@@ -734,22 +734,33 @@ async function startAutoPlay() {
         const secs = ((Date.now() - t0) / 1000).toFixed(1);
         if (!sol) { Panel.showHint(`无解 (${secs}s)`); Panel.setStatus('无解', 'loss'); break; }
         Panel.showHint(`${secs}s · ${sol.length} 步`);
+        let predictedSlot = []; // track expected slot contents
         for (let i = 0; i < sol.length; i++) {
           if (autoPlayStoppedFlag) break;
           const st = document.getElementById('page-status');
           if (st?.classList.contains('is-win') || st?.classList.contains('is-loss')) break;
-          const prev = document.getElementById('remaining-count')?.textContent;
-          const prevSlot = document.getElementById('slot-count')?.textContent;
+          const prevRemaining = document.getElementById('remaining-count')?.textContent;
+          const prevSlotRaw = document.getElementById('slot-count')?.textContent;
+          // Predict slot: add current pattern, remove groups of 3
+          predictedSlot = [...predictedSlot, sol[i].pattern];
+          const cnts = {}; for (const p of predictedSlot) cnts[p] = (cnts[p]||0)+1;
+          predictedSlot = predictedSlot.filter(p => { if (cnts[p] >= 3) { cnts[p]-=3; return false; } return true; });
           Panel.showHint(`[${i+1}/${sol.length}] #${sol[i].id} ${sol[i].pattern}`);
           actClickTile(sol[i].id);
-          // Wait for server AND animation to complete
           for (let w = 0; w < 40; w++) {
             await delay(150, 200);
             const st = document.getElementById('page-status');
             if (st?.classList.contains('is-win') || st?.classList.contains('is-loss')) break;
             const cr = document.getElementById('remaining-count')?.textContent;
             const cs = document.getElementById('slot-count')?.textContent;
-            if (cr !== prev || cs !== prevSlot) { await delay(300, 400); break; } // extra wait for animation
+            if (cr !== prevRemaining || cs !== prevSlotRaw) { await delay(300, 400); break; } // extra wait for animation
+          }
+          // Compare predicted slot with actual DOM slot
+          const actualSlot = [];
+          document.querySelectorAll('#slots-row [data-pattern]').forEach(el => actualSlot.push(el.dataset.pattern));
+          const match = predictedSlot.length === actualSlot.length && predictedSlot.every((p, j) => p === actualSlot[j]);
+          if (!match) {
+            console.warn('[tile] slot mismatch at step', i, 'predicted:', predictedSlot.join(','), 'actual:', actualSlot.join(','), 'remaining:', prevRemaining, '->', document.getElementById('remaining-count')?.textContent);
           }
           if (document.getElementById('page-status')?.classList.contains('is-loss')) break;
         }
