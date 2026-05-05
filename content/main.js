@@ -1161,7 +1161,9 @@ async function checkBgRunner() {
       return true;
     }
 
-    // Game-specific start functions (for games that don't use difficulty-panel/difficulty-grid)
+    // Difficulty name mappings (shared by all game start logic)
+    const matchNames = { easy:['入门','简单'], normal:['普通','经典'], hard:['困难','进阶','挑战'], hell:['地狱'], classic:['经典'], jumbo:['挑战','jumbo'], mini:['入门','mini'], expert:['专家'] };
+
     async function startNewGameType(gt, diff) {
       if (gt === 'lightsout') {
         // Click difficulty in lo-difficulty-row, then start button
@@ -1207,7 +1209,6 @@ async function checkBgRunner() {
 
       // Loop through all difficulties for this game in one tab
       const diffs = resp.difficulties || [resp.difficulty];
-      const matchNames = { easy:['入门','简单'], normal:['普通','经典'], hard:['困难','进阶','挑战'], hell:['地狱'], classic:['经典'], jumbo:['挑战','jumbo'], mini:['入门','mini'], expert:['专家'] };
       for (const diff of diffs) {
         console.log('[GA] processing diff:', diff);
         // Keep playing this difficulty until remaining = 0
