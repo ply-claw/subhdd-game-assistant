@@ -8,6 +8,12 @@ const GAMES = [
   { name: '🔢 数独', url: '/sudoku', type: 'sudoku', diffs: ['expert','hard','normal','easy'] },
   { name: '🧮 华容道', url: '/puzzle15', type: 'puzzle15', diffs: ['hard','classic','easy'] },
   { name: '🐑 羊了个羊', url: '/tile', type: 'tile', diffs: ['hell','hard','normal','easy'] },
+  { name: '💡 点灯', url: '/lightsout', type: 'lightsout', diffs: ['easy','normal','hard'] },
+  { name: '🌀 迷宫', url: '/maze', type: 'maze', diffs: ['easy','normal','hard'] },
+  { name: '💣 扫雷', url: '/minesweeper', type: 'minesweeper', diffs: ['beginner','intermediate','expert'] },
+  { name: '🔗 连线', url: '/flowfree', type: 'flowfree', diffs: ['easy','normal','hard'] },
+  { name: '📦 推箱子', url: '/sokoban', type: 'sokoban', diffs: ['easy','normal','hard'] },
+  { name: '🧶 数织', url: '/nonogram', type: 'nonogram', diffs: ['easy','normal','hard'] },
   { name: '🧩 2048', url: '/puzzle2048', type: 'puzzle2048', diffs: ['jumbo','classic'] },
 ];
 
