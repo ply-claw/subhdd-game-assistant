@@ -11,9 +11,8 @@ const SolverSokoban = (() => {
     const rows = sizeEl ? parseInt(getComputedStyle(sizeEl).getPropertyValue('--rows')) || 5 : 5;
     const cols = sizeEl ? parseInt(getComputedStyle(sizeEl).getPropertyValue('--cols')) || 5 : 5;
 
-    cells.forEach(c => {
-      const r = parseInt(c.dataset.row), col = parseInt(c.dataset.col);
-      if (isNaN(r) || isNaN(col)) return;
+    cells.forEach((c, i) => {
+      const r = Math.floor(i / cols), col = i % cols;
       if (c.classList.contains('is-wall')) walls.add(r+','+col);
       else if (c.classList.contains('is-target')) targets.add(r+','+col);
       if (c.classList.contains('is-player')) { playerR = r; playerC = col; }
