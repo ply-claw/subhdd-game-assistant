@@ -1165,16 +1165,18 @@ async function checkBgRunner() {
     async function startNewGameType(gt, diff) {
       if (gt === 'lightsout') {
         // Click difficulty in lo-difficulty-row, then start button
+        const names = matchNames[diff] || [diff];
         const diffRow = document.getElementById('lo-difficulty-row');
         const btns = diffRow ? diffRow.querySelectorAll('button, [data-difficulty]') : [];
         for (const b of btns) {
-          if ((b.textContent || '').includes(diff) || (b.dataset.difficulty === diff)) {
-            b.click(); break;
+          const text = b.textContent || '';
+          if (names.some(n => text.includes(n)) || b.dataset.difficulty === diff) {
+            b.click(); console.log('[GA] lightsout selected', diff); break;
           }
         }
         await new Promise(r => setTimeout(r, 500));
         const startBtn = document.getElementById('lo-start-btn');
-        if (startBtn) startBtn.click();
+        if (startBtn) { startBtn.click(); console.log('[GA] lightsout start clicked'); }
         return;
       }
       // Fallback: click by button order in difficulty-grid
