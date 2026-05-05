@@ -39,7 +39,7 @@ function notify(title, message) {
 }
 
 // ---- Start a daily run ----
-async function startDailyRun(depth) {
+async function startDailyRun(depth, enabledGames) {
   const existing = await getRunState();
   if (existing && existing.running) {
     console.log('[bg] run already in progress');
@@ -49,6 +49,7 @@ async function startDailyRun(depth) {
   const state = {
     running: true, phase: 'checkin', gameIdx: 0, diffIdx: 0,
     depth: depth || 3, startedAt: Date.now(), results: [],
+    enabledGames: enabledGames || null, // null = all enabled
   };
   await setRunState(state);
 
@@ -82,9 +83,16 @@ async function onGameAllDone(tabId, result) {
     return;
   }
 
-  // Open next game tab
+  // Open next game tab — skip unchecked games
   await setRunState(state);
-  const g = GAMES[state.gameIdx];
+  let g = GAMES[state.gameIdx];
+  while (g && state.enabledGames && state.enabledGames[g.type] === false) {
+    state.gameIdx++;
+    g = GAMES[state.gameIdx];
+    if (state.gameIdx >= GAMES.length) { await finishRun(state); return; }
+  }
+  if (!g) { await finishRun(state); return; }
+  await setRunState(state);
   const tab = await chrome.tabs.create({ url: BASE + g.url, active: true });
 }
 
@@ -124,7 +132,7 @@ async function getRunInfo(tabId) {
 // ---- Message handler ----
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'startDailyRun') {
-    startDailyRun(msg.depth || 3);
+    startDailyRun(msg.depth || 3, msg.enabledGames);
     sendResponse({ ok: true });
     return true;
   }
