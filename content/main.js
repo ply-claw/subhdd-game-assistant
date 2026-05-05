@@ -1161,6 +1161,29 @@ async function checkBgRunner() {
       return true;
     }
 
+    // Game-specific start functions (for games that don't use difficulty-panel/difficulty-grid)
+    async function startNewGameType(gt, diff) {
+      if (gt === 'lightsout') {
+        // Click difficulty in lo-difficulty-row, then start button
+        const diffRow = document.getElementById('lo-difficulty-row');
+        const btns = diffRow ? diffRow.querySelectorAll('button, [data-difficulty]') : [];
+        for (const b of btns) {
+          if ((b.textContent || '').includes(diff) || (b.dataset.difficulty === diff)) {
+            b.click(); break;
+          }
+        }
+        await new Promise(r => setTimeout(r, 500));
+        const startBtn = document.getElementById('lo-start-btn');
+        if (startBtn) startBtn.click();
+        return;
+      }
+      // Fallback: click by button order in difficulty-grid
+      const grid = document.getElementById('difficulty-grid');
+      const btns = grid ? grid.querySelectorAll('button') : [];
+      const idx = btns.length - 1 - 0; // first difficulty (hardest)
+      if (idx >= 0 && idx < btns.length) btns[idx].click();
+    }
+
     if (resp.phase === 'game') {
       currentGameType = detectGame();
       if (!currentGameType) return false;
@@ -1214,9 +1237,36 @@ async function checkBgRunner() {
             cacheGameCounts();
             continue; // go back to check difficulty panel
           }
-          if (!gotPanel) { console.log('[GA] waited 25s, no panel'); keepGoing = false; break; }
+          if (!gotPanel && !gotActive) {
+            // Try game-specific start for new games (lightsout, sokoban, etc.)
+            const hasNewUI = ['lightsout','sokoban','maze','minesweeper','nonogram','flowfree'].includes(currentGameType);
+            if (hasNewUI) {
+              await startNewGameType(currentGameType, diff);
+              await new Promise(r => setTimeout(r, 1000));
+              // Check if game started
+              const boardId = GAME_BOARD_IDS[currentGameType];
+              if (boardId) {
+                const b = document.getElementById(boardId);
+                if (b && !b.hidden) gotPanel = true;
+              }
+            }
+            if (!gotPanel) { console.log('[GA] waited 25s, no panel'); keepGoing = false; break; }
+          }
 
-          // Find the difficulty button by text match
+          // For new games without standard UI, skip button finding (already started above)
+          if (GAME_BOARD_IDS[currentGameType]) {
+            // New game already started by startNewGameType, just wait for board
+            for (let w = 0; w < 40; w++) {
+              await new Promise(r => setTimeout(r, 300));
+              const boardEl = document.getElementById(GAME_BOARD_IDS[currentGameType]);
+              if (boardEl && !boardEl.hidden) break;
+            }
+            for (let w = 0; w < 30; w++) {
+              await new Promise(r => setTimeout(r, 300));
+              const s = readGameState();
+              if (s && s.hasActiveSession) break;
+            }
+          } else {
           let card = null;
           const allBtns = document.querySelectorAll('#difficulty-grid button, [class*="diff-card"]');
           for (const btn of allBtns) {
@@ -1241,17 +1291,20 @@ async function checkBgRunner() {
             const s = readGameState();
             if (s && s.hasActiveSession) break;
           }
+          } // end standard-game else block
 
           createPanel(); updatePanel(); startPolling();
           autoPlayStoppedFlag = false; autoPlayRunning = false;
           await startAutoPlay();
           cacheGameCounts(); // update stored remaining counts
 
-          // Re-query — DOM may have refreshed after game
+          // Re-query card for standard games
+          if (!GAME_BOARD_IDS[currentGameType]) {
           const freshCard = [...document.querySelectorAll('#difficulty-grid button, [class*="diff-card"]')]
             .find(b => { const l = b.textContent || ''; const n = matchNames[diff] || [diff]; return n.some(x => l.includes(x)); });
           console.log("[GA] after play:", diff, "freshCard:", !!freshCard, "disabled:", freshCard?.disabled);
           if (freshCard?.disabled) keepGoing = false;
+          } // end non-new-game card check
         }
       }
 
