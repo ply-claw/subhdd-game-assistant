@@ -862,6 +862,7 @@ async function startAutoPlay() {
             const cs = document.getElementById('slot-count')?.textContent;
             if (cr !== prevRemaining || cs !== prevSlotRaw) { await delay(300, 400); break; } // extra wait for animation
           }
+          if (document.getElementById('page-status')?.classList.contains('is-loss')) break;
           // Compare predicted slot with actual DOM slot
           const actualSlot = [];
           document.querySelectorAll('#slots-row [data-pattern]').forEach(el => actualSlot.push(el.dataset.pattern));
