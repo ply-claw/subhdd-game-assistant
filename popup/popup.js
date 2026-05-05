@@ -35,6 +35,25 @@ autoTime.addEventListener('change', () => {
   chrome.storage.local.set({ autoRunTime: autoTime.value });
 });
 
+// Load & save enabled games
+const gameChecks = document.querySelectorAll('.ga-game-check');
+chrome.storage.local.get('ga_enabled_games', (data) => {
+  const saved = data.ga_enabled_games || {};
+  gameChecks.forEach(cb => {
+    const game = cb.dataset.game;
+    if (saved[game] !== undefined) cb.checked = saved[game];
+  });
+});
+gameChecks.forEach(cb => {
+  cb.addEventListener('change', () => {
+    const enabled = {};
+    document.querySelectorAll('.ga-game-check').forEach(c => {
+      enabled[c.dataset.game] = c.checked;
+    });
+    chrome.storage.local.set({ ga_enabled_games: enabled });
+  });
+});
+
 // Check tab
 async function checkTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -78,25 +97,24 @@ async function refreshStatus() {
 
 function renderCounts(status) {
   const games = [
-    { key: 'memory', emoji: '🃏', name: '记忆翻牌' },
-    { key: 'sudoku', emoji: '🔢', name: '数独' },
-    { key: 'puzzle15', emoji: '🧮', name: '华容道' },
-    { key: 'tile', emoji: '🐑', name: '羊了个羊' },
-    { key: 'puzzle2048', emoji: '🧩', name: '2048' },
+    { key: 'memory', name: '记忆翻牌' },
+    { key: 'sudoku', name: '数独' },
+    { key: 'puzzle15', name: '华容道' },
+    { key: 'tile', name: '羊了个羊' },
+    { key: 'puzzle2048', name: '2048' },
   ];
-  // Checkin status (not a count)
+  // Checkin status
   const cin = status.checkin;
-  const cinIcon = cin === 'done' ? '✅' : cin === 'pending' ? '⏳' : '❓';
   const cinText = cin === 'done' ? '已签到' : cin === 'pending' ? '未签到' : '?';
 
-  let html = `<div class="count-row">${cinIcon} 📅 签到: ${cinText}</div>`;
+  let html = `<div class="count-row">签到: ${cinText}</div>`;
   const rem = status.remaining || {};
   html += games.map((g) => {
     const r = rem[g.key];
-    const icon = r === 0 ? '✅' : (typeof r === 'number' && r > 0) ? '⏳' : '❓';
-    return `<div class="count-row">${icon} ${g.emoji} ${g.name}: ${r === 0 ? '已完成' : r + ' 剩余'}</div>`;
+    const t = r === 0 ? '已完成' : (typeof r === 'number' && r > 0) ? r + ' 剩余' : '?';
+    return `<div class="count-row">${g.name}: ${t}</div>`;
   }).join('');
-  countsEl.innerHTML = html;
+  document.getElementById('counts-summary').innerHTML = html;
 }
 
 // Daily run
@@ -108,10 +126,14 @@ dailyBtn.addEventListener('click', async () => {
   if (!tab) { resetButtons(); return; }
 
   const depth = Number(depthSlider.value) || 3;
+  const enabled = {};
+  document.querySelectorAll('.ga-game-check').forEach(c => {
+    enabled[c.dataset.game] = c.checked;
+  });
   if (runModeEl.value === 'tabs') {
-    await sendToBg({ type: 'startDailyRun', depth });
+    await sendToBg({ type: 'startDailyRun', depth, enabledGames: enabled });
   } else {
-    await sendToTab(tab, { type: 'startDailyRun', depth });
+    await sendToTab(tab, { type: 'startDailyRun', depth, enabledGames: enabled });
   }
   resetButtons();
 });

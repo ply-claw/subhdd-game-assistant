@@ -11,7 +11,59 @@
       <span class="popup-title">🎮 Game Assistant</span>
     </div>
     <div class="popup-status" id="popup-status">检查中...</div>
-    <div class="popup-counts" id="popup-counts"></div>
+    <div class="popup-counts" id="popup-counts">
+      <div class="popup-game-checkboxes" id="popup-game-checkboxes" style="margin-bottom:6px">
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="lightsout" checked>
+          <span>💡 点灯</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="maze" checked>
+          <span>🌀 迷宫</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="minesweeper" checked>
+          <span>💣 扫雷</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="flowfree" checked>
+          <span>🌊 连电路</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="sokoban" checked>
+          <span>📦 推箱子</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="nonogram" checked>
+          <span>🎨 数织</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="memory" checked>
+          <span>🃏 记忆翻牌</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="sudoku" checked>
+          <span>🔢 数独</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="puzzle15" checked>
+          <span>🧮 华容道</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="tile" checked>
+          <span>🐑 羊了个羊</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="puzzle2048" checked>
+          <span>🧩 2048</span>
+        </label>
+        <label class="popup-game-row" style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0">
+          <input type="checkbox" class="ga-game-check" data-game="checkin" checked>
+          <span>📅 签到</span>
+        </label>
+      </div>
+      <div id="counts-summary"></div>
+    </div>
     <div class="popup-actions">
       <button class="popup-btn popup-btn-primary" id="btn-daily-run" disabled>🚀 一键全通</button>
       <button class="popup-btn popup-btn-stop" id="btn-stop-run" style="display:none">⏹ 停止</button>
