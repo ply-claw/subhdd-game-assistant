@@ -46,14 +46,24 @@ function readGenericActiveState(ppId) {
   };
 }
 
+const GAME_BOARD_IDS = { minesweeper: 'ms-board-wrap', sokoban: 'sk-board', lightsout: 'lo-board-wrap', maze: 'mz-board-wrap', nonogram: 'ng-board-wrap', flowfree: 'ff-board-wrap' };
+
+function readNewGameState() {
+  const boardId = GAME_BOARD_IDS[currentGameType];
+  if (!boardId) return null;
+  const board = document.getElementById(boardId);
+  if (!board || board.hidden) return null;
+  return { difficulty: '?', won: document.getElementById('page-status')?.classList.contains('is-win') || false, game_over: document.getElementById('page-status')?.classList.contains('is-loss') || false };
+}
+
 function readSessionDOM() {
-  // Tile game uses different DOM structure
   if (currentGameType === 'tile') {
     const desk = document.getElementById('tile-desk');
     if (!desk || desk.hidden) return null;
     return readTileState();
   }
 
+  if (GAME_BOARD_IDS[currentGameType]) return readNewGameState();
   const playPanel = document.getElementById('play-panel');
   if (!playPanel || playPanel.hidden) return null;
 
@@ -62,12 +72,13 @@ function readSessionDOM() {
     case 'memory': return readMemoryState();
     case 'puzzle15': return readPuzzle15State();
     case 'sudoku': return readSudokuState();
-    case 'minesweeper': return readGenericActiveState('play-panel');
-    case 'sokoban': return readGenericActiveState('play-panel');
-    case 'lightsout': return readGenericActiveState('play-panel');
-    case 'maze': return readGenericActiveState('play-panel');
-    case 'nonogram': return readGenericActiveState('play-panel');
-    case 'flowfree': return readGenericActiveState('play-panel');
+    case 'minesweeper':
+    case 'sokoban':
+    case 'lightsout':
+    case 'maze':
+    case 'nonogram':
+    case 'flowfree':
+      return readNewGameState();
     default: return null;
   }
 }
@@ -445,9 +456,9 @@ function bindButtons() {
   const hintBtn = document.getElementById('ga-btn-show-hint');
   const autoBtn = document.getElementById('ga-btn-auto');
   const stopBtn = document.getElementById('ga-btn-stop');
-  if (hintBtn) hintBtn.onclick = showHint;
-  if (autoBtn) autoBtn.onclick = startAutoPlay;
-  if (stopBtn) stopBtn.onclick = stopAutoPlay;
+  if (hintBtn) { hintBtn.onclick = null; hintBtn.addEventListener('click', showHint); }
+  if (autoBtn) { autoBtn.onclick = null; autoBtn.addEventListener('click', startAutoPlay); }
+  if (stopBtn) { stopBtn.onclick = null; stopBtn.addEventListener('click', stopAutoPlay); }
 }
 
 async function showHint() {
