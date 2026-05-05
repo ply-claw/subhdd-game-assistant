@@ -163,8 +163,12 @@ const SolverTile = (() => {
       return false;
     }
 
+    // Read current slot from DOM (solver starts from actual game state)
+    const currentSlot = [];
+    document.querySelectorAll('#slots-row [data-pattern]').forEach(el => currentSlot.push(el.dataset.pattern));
+
     const allIds = new Set(tiles.map(t => t.id));
-    if (search(allIds, [], 0)) {
+    if (search(allIds, currentSlot, 0)) {
       return solution.map(id => ({ id, pattern: patName(byId[id].pattern) }));
     }
     return null;
