@@ -16,6 +16,12 @@ function detectGame() {
   if (path.startsWith('/puzzle15')) return 'puzzle15';
   if (path.startsWith('/sudoku')) return 'sudoku';
   if (path.startsWith('/tile')) return 'tile';
+  if (path.startsWith('/minesweeper')) return 'minesweeper';
+  if (path.startsWith('/sokoban')) return 'sokoban';
+  if (path.startsWith('/lightsout')) return 'lightsout';
+  if (path.startsWith('/maze')) return 'maze';
+  if (path.startsWith('/nonogram')) return 'nonogram';
+  if (path.startsWith('/flowfree')) return 'flowfree';
   return null;
 }
 
@@ -27,6 +33,16 @@ function readGameState() {
     hasActiveSession: !!sess,
     gameType: currentGameType,
     session: sess,
+  };
+}
+
+function readGenericActiveState(ppId) {
+  const pp = document.getElementById(ppId || 'play-panel');
+  if (!pp || pp.hidden) return null;
+  return {
+    difficulty: document.getElementById('hud-diff')?.textContent?.trim() || '?',
+    won: document.getElementById('page-status')?.classList.contains('is-win') || false,
+    game_over: document.getElementById('page-status')?.classList.contains('is-loss') || false,
   };
 }
 
@@ -46,6 +62,12 @@ function readSessionDOM() {
     case 'memory': return readMemoryState();
     case 'puzzle15': return readPuzzle15State();
     case 'sudoku': return readSudokuState();
+    case 'minesweeper': return readGenericActiveState('play-panel');
+    case 'sokoban': return readGenericActiveState('play-panel');
+    case 'lightsout': return readGenericActiveState('play-panel');
+    case 'maze': return readGenericActiveState('play-panel');
+    case 'nonogram': return readGenericActiveState('play-panel');
+    case 'flowfree': return readGenericActiveState('play-panel');
     default: return null;
   }
 }
@@ -263,6 +285,33 @@ function actFillCell(row, col, value) {
   }
 }
 
+function actClickLO(r, c) {
+  const cell = document.querySelector(`.lo-cell[data-r="${r}"][data-c="${c}"]`);
+  if (cell) cell.click();
+}
+function actClickMS(action, r, c) {
+  const cell = document.querySelector(`.ms-cell[data-r="${r}"][data-c="${c}"]`);
+  if (cell) { cell.dispatchEvent(new MouseEvent('contextmenu', {bubbles:true})); /* flag */ }
+  // For reveal, just click. For flag right-click.
+  if (action === 'reveal' && cell) cell.click();
+}
+function actClickFF(r, c) {
+  const cell = document.querySelector(`.ff-cell[data-r="${r}"][data-c="${c}"]`);
+  if (cell) cell.click();
+}
+function actClickNG(r, c) {
+  const cell = document.querySelector(`.ng-cell[data-r="${r}"][data-c="${c}"]`);
+  if (cell) cell.click();
+}
+function actSokobanMove(dir) {
+  const km = {up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'};
+  document.dispatchEvent(new KeyboardEvent('keydown', {key: km[dir], bubbles:true}));
+}
+function actMazeMove(dir) {
+  const km = {up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'};
+  document.dispatchEvent(new KeyboardEvent('keydown', {key: km[dir], bubbles:true}));
+}
+
 function actStartGame(difficulty) {
   // Click by data-diff (2048) or try button order
   const card = document.querySelector(`[data-diff="${difficulty}"]`);
@@ -325,6 +374,12 @@ function updatePanel() {
       case 'puzzle15': Panel.renderPuzzle15(currentState); break;
       case 'sudoku': Panel.renderSudoku(currentState); break;
       case 'tile': Panel.renderTile(currentState); break;
+      case 'lightsout': Panel.renderLightsOut(currentState); break;
+      case 'maze': Panel.renderMaze(currentState); break;
+      case 'minesweeper': Panel.renderMinesweeper(currentState); break;
+      case 'flowfree': Panel.renderFlowFree(currentState); break;
+      case 'sokoban': Panel.renderSokoban(currentState); break;
+      case 'nonogram': Panel.renderNonogram(currentState); break;
     }
     bindButtons();
   } else {
@@ -502,6 +557,47 @@ async function showHint() {
       const sug = SolverTile.suggestNext();
       if (sug) Panel.showHint(`点 #${sug.tile.id}: ${sug.tile.pattern} (${sug.reason})`);
       else Panel.showHint('无可用方块');
+      break;
+    }
+    case 'lightsout': {
+      const cells = document.querySelectorAll('.lo-cell');
+      const size = Math.round(Math.sqrt(cells.length));
+      const board = Array.from({length:size}, () => Array(size).fill(0));
+      cells.forEach(c => {
+        const r = parseInt(c.dataset.r), c2 = parseInt(c.dataset.c);
+        if (c.classList.contains('is-on')) board[r][c2] = 1;
+      });
+      const clicks = SolverLightsOut.solve(board, size);
+      if (clicks) Panel.showHint(`点 ${clicks.length} 个格子`);
+      else Panel.showHint('无法求解');
+      break;
+    }
+    case 'maze': {
+      Panel.showHint('使用自动完成走迷宫');
+      break;
+    }
+    case 'minesweeper': {
+      const board = SolverMinesweeper.readBoard();
+      if (!board) { Panel.showHint('无法读取棋盘'); break; }
+      const rows = board.length, cols = board[0]?.length || 0;
+      const sug = SolverMinesweeper.suggest(board, rows, cols);
+      if (sug) Panel.showHint(`${sug.type==='flag'?'标旗':'翻开'} (${sug.r},${sug.c})`);
+      else Panel.showHint('无可用推断');
+      break;
+    }
+    case 'flowfree': {
+      Panel.showHint('使用自动完成连线');
+      break;
+    }
+    case 'sokoban': {
+      Panel.showHint('使用自动完成推箱子');
+      break;
+    }
+    case 'nonogram': {
+      const data = SolverNonogram.readBoard();
+      if (!data) { Panel.showHint('无法读取'); break; }
+      const fills = SolverNonogram.solve(data.board, data.rowClues, data.colClues, data.rows, data.cols);
+      Panel.showHint(fills ? `${fills.length} 格可填` : '无法求解');
       break;
     }
   }
@@ -767,6 +863,128 @@ async function startAutoPlay() {
         break;
       }
 
+      case 'lightsout': {
+        const cells = document.querySelectorAll('.lo-cell');
+        const size = Math.round(Math.sqrt(cells.length));
+        const board = Array.from({length:size}, () => Array(size).fill(0));
+        cells.forEach(c => {
+          const r = parseInt(c.dataset.r), c2 = parseInt(c.dataset.c);
+          if (c.classList.contains('is-on')) board[r][c2] = 1;
+        });
+        const clicks = SolverLightsOut.solve(board, size);
+        if (!clicks) { Panel.showHint('无法求解'); break; }
+        const prevCount = document.getElementById('hud-moves')?.textContent;
+        for (const {r, c} of clicks) {
+          if (autoPlayStoppedFlag) break;
+          actClickLO(r, c);
+          for (let w = 0; w < 30; w++) {
+            await delay(100, 150);
+            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+            if (document.getElementById('hud-moves')?.textContent !== prevCount) break;
+          }
+        }
+        break;
+      }
+      case 'maze': {
+        // Simple wall-follower: keep right hand on wall
+        const dirs = ['up','right','down','left'];
+        let dirIdx = 0;
+        while (!autoPlayStoppedFlag) {
+          if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+          const prevMoves = document.getElementById('hud-moves')?.textContent;
+          actMazeMove(dirs[dirIdx]);
+          await delay(200, 400);
+          for (let w = 0; w < 20; w++) {
+            await delay(100, 150);
+            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+            if (document.getElementById('hud-moves')?.textContent !== prevMoves) break;
+          }
+          // Turn right if hit wall, else try going forward
+          dirIdx = (dirIdx + 1) % 4;
+        }
+        break;
+      }
+      case 'minesweeper': {
+        while (!autoPlayStoppedFlag) {
+          await delay(300, 600);
+          if (document.getElementById('page-status')?.classList.contains('is-win') ||
+              document.getElementById('page-status')?.classList.contains('is-loss')) break;
+          const board = SolverMinesweeper.readBoard();
+          if (!board) break;
+          const rows = board.length, cols = board[0]?.length || 0;
+          const sug = SolverMinesweeper.suggest(board, rows, cols);
+          if (!sug) break;
+          const prevMoves = document.getElementById('hud-moves')?.textContent;
+          if (sug.type === 'flag') {
+            const cell = document.querySelector(`.ms-cell[data-r="${sug.r}"][data-c="${sug.c}"]`);
+            if (cell) cell.dispatchEvent(new MouseEvent('contextmenu', {bubbles:true}));
+          } else {
+            const cell = document.querySelector(`.ms-cell[data-r="${sug.r}"][data-c="${sug.c}"]`);
+            if (cell) cell.click();
+          }
+          for (let w = 0; w < 30; w++) {
+            await delay(100, 150);
+            if (document.getElementById('page-status')?.classList.contains('is-win') ||
+                document.getElementById('page-status')?.classList.contains('is-loss')) break;
+            if (document.getElementById('hud-moves')?.textContent !== prevMoves) break;
+          }
+        }
+        break;
+      }
+      case 'flowfree': {
+        const cells = document.querySelectorAll('.ff-cell');
+        const size = Math.round(Math.sqrt(cells.length));
+        const board = SolverFlowFree.readBoard(size);
+        const steps = SolverFlowFree.solve(board, size);
+        if (!steps) { Panel.showHint('无法求解'); break; }
+        for (const step of steps) {
+          if (autoPlayStoppedFlag) break;
+          // Click start point to select color
+          const startCell = document.querySelector(`.ff-cell[data-r="${step.start.r}"][data-c="${step.start.c}"]`);
+          if (startCell) startCell.click();
+          await delay(200, 400);
+          // Click each path cell
+          for (const p of step.path) {
+            if (autoPlayStoppedFlag) break;
+            const pCell = document.querySelector(`.ff-cell[data-r="${p.r}"][data-c="${p.c}"]`);
+            if (pCell) pCell.click();
+            await delay(200, 400);
+          }
+        }
+        break;
+      }
+      case 'sokoban': {
+        const board = SolverSokoban.readBoard();
+        const sol = SolverSokoban.solve(board);
+        if (!sol) { Panel.showHint('无法求解'); break; }
+        const prevMoves = document.getElementById('sk-moves')?.textContent;
+        for (const dir of sol) {
+          if (autoPlayStoppedFlag) break;
+          actSokobanMove(dir);
+          await delay(300, 500);
+          for (let w = 0; w < 20; w++) {
+            await delay(100, 150);
+            if (document.getElementById('page-status')?.classList.contains('is-win')) break;
+            if (document.getElementById('sk-moves')?.textContent !== prevMoves) break;
+          }
+        }
+        break;
+      }
+      case 'nonogram': {
+        const data = SolverNonogram.readBoard();
+        if (!data) break;
+        const fills = SolverNonogram.solve(data.board, data.rowClues, data.colClues, data.rows, data.cols);
+        if (!fills) { Panel.showHint('无法求解'); break; }
+        for (const {r, c} of fills) {
+          if (autoPlayStoppedFlag) break;
+          const cell = document.querySelector(`.ng-cell[data-r="${r}"][data-c="${c}"]`);
+          if (cell && !cell.classList.contains('is-filled')) {
+            cell.click();
+            await delay(150, 300);
+          }
+        }
+        break;
+      }
     }
     Panel.setStatus('完成', 'win');
   } catch (e) {

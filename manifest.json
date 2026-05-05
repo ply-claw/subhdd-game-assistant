@@ -15,7 +15,13 @@
         "https://sub.hdd.sb/sudoku*",
         "https://sub.hdd.sb/tile*",
         "https://sub.hdd.sb/hub*",
-        "https://sub.hdd.sb/checkin*"
+        "https://sub.hdd.sb/checkin*",
+        "https://sub.hdd.sb/minesweeper*",
+        "https://sub.hdd.sb/sokoban*",
+        "https://sub.hdd.sb/lightsout*",
+        "https://sub.hdd.sb/maze*",
+        "https://sub.hdd.sb/nonogram*",
+        "https://sub.hdd.sb/flowfree*"
       ],
       "js": [
         "content/solvers/solver2048.js",
@@ -23,6 +29,12 @@
         "content/solvers/solverPuzzle15.js",
         "content/solvers/solverSudoku.js",
         "content/solvers/solverTile.js",
+        "content/solvers/solverLightsOut.js",
+        "content/solvers/solverMaze.js",
+        "content/solvers/solverMinesweeper.js",
+        "content/solvers/solverFlowFree.js",
+        "content/solvers/solverSokoban.js",
+        "content/solvers/solverNonogram.js",
         "content/ui/panel.js",
         "content/runner.js",
         "content/main.js"
