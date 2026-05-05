@@ -53,6 +53,18 @@ async function startDailyRun(depth, enabledGames) {
   };
   await setRunState(state);
 
+  // Skip checkin if unchecked
+  if (enabledGames && enabledGames.checkin === false) {
+    state.phase = 'game'; state.gameIdx = 0;
+    // Find first enabled game
+    let g = GAMES[0];
+    while (g && enabledGames && enabledGames[g.type] === false) { state.gameIdx++; g = GAMES[state.gameIdx]; }
+    if (!g || state.gameIdx >= GAMES.length) { await finishRun(state); return; }
+    await setRunState(state);
+    chrome.tabs.create({ url: BASE + g.url, active: true });
+    return;
+  }
+
   // Open checkin page
   const tab = await chrome.tabs.create({ url: BASE + '/checkin', active: true });
   state.checkinTabId = tab.id;
