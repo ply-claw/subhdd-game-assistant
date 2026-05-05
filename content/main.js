@@ -1216,7 +1216,9 @@ async function checkBgRunner() {
         while (keepGoing && !autoPlayStoppedFlag) {
           // Wait for difficulty panel OR active session
           let gotPanel = false, gotActive = false;
-          for (let i = 0; i < 50; i++) {
+          const isNewGame = !!GAME_BOARD_IDS[currentGameType];
+          const maxWait = isNewGame ? 5 : 50; // new games: short wait, then use custom start
+          for (let i = 0; i < maxWait; i++) {
             await new Promise(r => setTimeout(r, 500));
             const dp = document.getElementById('difficulty-panel');
             if (dp && !dp.hidden) { gotPanel = true; break; }
